@@ -1,6 +1,7 @@
 """Pareto Q-Learning."""
 
 import numbers
+from itertools import product
 from typing import Callable
 
 import gymnasium as gym
@@ -12,11 +13,33 @@ from morl_baselines.common.performance_indicators import hypervolume
 from morl_baselines.common.utils import linearly_decaying_value
 
 
+def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
+    """Generate evenly spaced weight vectors on the unit simplex.
+
+    Uses the same approach as MOEA/D: place points on a lattice in the
+    (num_objectives - 1)-simplex with `num_divisions` intervals per axis.
+
+    Args:
+        num_objectives: Number of objectives.
+        num_divisions: Number of divisions along each axis.
+
+    Returns:
+        Array of shape (n_weights, num_objectives) with rows summing to 1.
+    """
+    combs = product(range(num_divisions + 1), repeat=num_objectives)
+    weights = np.array([c for c in combs if sum(c) == num_divisions])
+    weights = weights / num_divisions
+    # Avoid zero weights — replace with small epsilon for Chebyshev stability
+    weights = np.maximum(weights, 1e-4)
+    weights = weights / weights.sum(axis=1, keepdims=True)
+    return weights
+
+
 class PQL(MOAgent):
     """Pareto Q-learning.
 
     Tabular method relying on pareto pruning.
-    Paper: K. Van Moffaert and A. Nowé, “Multi-objective reinforcement learning using sets of pareto dominating policies,” The Journal of Machine Learning Research, vol. 15, no. 1, pp. 3483–3512, 2014.
+    Paper: K. Van Moffaert and A. Nowé, "Multi-objective reinforcement learning using sets of pareto dominating policies," The Journal of Machine Learning Research, vol. 15, no. 1, pp. 3483–3512, 2014.
     """
 
     def __init__(
@@ -28,6 +51,7 @@ class PQL(MOAgent):
             epsilon_decay_steps=100000,
             final_epsilon=0.1,
             seed=None,
+            num_weight_divisions=5,
     ):
 
         super().__init__(env, seed=seed)
@@ -71,6 +95,30 @@ class PQL(MOAgent):
         ]
         self.avg_reward = np.zeros((self.num_states, self.num_actions, self.num_objectives))
 
+        # Decomposition setup
+        self.weights = generate_weights(self.num_objectives, num_weight_divisions)
+        self.ideal_point = np.zeros(self.num_objectives)
+
+    def get_config(self):
+        return {
+            "env_id": self.env.unwrapped.spec.id if hasattr(self.env.unwrapped, "spec") else "FruitTree",
+            "gamma": self.gamma,
+            "initial_epsilon": self.initial_epsilon,
+            "epsilon_decay_steps": self.epsilon_decay_steps,
+            "final_epsilon": self.final_epsilon,
+            "num_states": self.num_states,
+            "num_actions": self.num_actions,
+            "num_objectives": self.num_objectives,
+            "ref_point": self.ref_point.tolist(),
+            "num_weights": len(self.weights),
+        }
+
+    def _update_ideal_point(self, state: int):
+        """Update the ideal point from the Q-sets of all actions at a state."""
+        for action in range(self.num_actions):
+            for vec in self.get_q_set(state, action):
+                self.ideal_point = np.maximum(self.ideal_point, np.array(vec))
+
     def score_pareto_cardinality(self, state: int):
 
         q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
@@ -90,6 +138,35 @@ class PQL(MOAgent):
         q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
         action_scores = [hypervolume(self.ref_point, list(q_set)) for q_set in q_sets]
         return action_scores
+
+    def score_decomposition(self, state: int):
+        """Score actions using Chebyshev scalarisation over a set of weight vectors.
+
+        For each weight vector, finds the best Q-vector across all actions
+        using the Chebyshev (min-max) scalarisation. The action that
+        contributes the best scalarised value for the most weight vectors
+        receives the highest score — analogous to how MOEA/D selects
+        solutions that best serve their assigned subproblems.
+        """
+        q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
+        scores = np.zeros(self.num_actions)
+
+        for w in self.weights:
+            best_action = None
+            best_scalarised = np.inf
+
+            for action, q_set in enumerate(q_sets):
+                for vec in q_set:
+                    # Chebyshev: minimise the worst weighted shortfall from ideal
+                    scalarised = np.max(w * (self.ideal_point - np.array(vec)))
+                    if scalarised < best_scalarised:
+                        best_scalarised = scalarised
+                        best_action = action
+
+            if best_action is not None:
+                scores[best_action] += 1
+
+        return scores
 
     def get_q_set(self, state: int, action: int):
 
@@ -115,14 +192,21 @@ class PQL(MOAgent):
             self,
             total_timesteps,
             action_eval="hypervolume",
+            log_every=1000,
     ):
 
-        if action_eval == "hypervolume":
+        if action_eval == "indicator":
             score_func = self.score_hypervolume
-        elif action_eval == "pareto_cardinality":
+        elif action_eval == "pareto":
             score_func = self.score_pareto_cardinality
+        elif action_eval == "decomposition":
+            score_func = self.score_decomposition
         else:
-            raise Exception("No other method implemented yet")
+            raise Exception(f"Unknown action_eval: {action_eval}. "
+                            f"Choose from 'indicator', 'pareto', 'decomposition'.")
+
+        convergence_log = []
+        next_log_step = log_every
 
         while self.global_step < total_timesteps:
             state, _ = self.env.reset()
@@ -131,6 +215,9 @@ class PQL(MOAgent):
             truncated = False
 
             while not (terminated or truncated) and self.global_step < total_timesteps:
+                # Update ideal point before selection so decomposition scorer is current
+                self._update_ideal_point(state)
+
                 action = self.select_action(state, score_func)
                 next_state, reward, terminated, truncated, _ = self.env.step(action)
                 self.global_step += 1
@@ -139,7 +226,20 @@ class PQL(MOAgent):
                 self.counts[state, action] += 1
                 self.non_dominated[state][action] = self.calc_non_dominated(next_state)
                 self.avg_reward[state, action] += (reward - self.avg_reward[state, action]) / self.counts[state, action]
+
                 state = next_state
+
+                # Periodically log convergence metrics
+                if self.global_step >= next_log_step:
+                    pcs = self.get_local_pcs(state=0)
+                    hv = hypervolume(self.ref_point, list(pcs)) if pcs else 0.0
+                    convergence_log.append({
+                        'timestep': self.global_step,
+                        'hypervolume': hv,
+                        'pcs_size': len(pcs),
+                        'epsilon': self.epsilon,
+                    })
+                    next_log_step += log_every
 
             self.epsilon = linearly_decaying_value(
                 self.initial_epsilon,
@@ -149,7 +249,7 @@ class PQL(MOAgent):
                 self.final_epsilon,
             )
 
-        return self.get_local_pcs(state=0)
+        return self.get_local_pcs(state=0), convergence_log
 
     def get_local_pcs(self, state: int = 0):
 
