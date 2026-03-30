@@ -145,19 +145,19 @@ DEFAULT_SCENARIO = {'b': 0.42, 'q': 2.0}
 
 run_scorer = {
     'pareto': True,
-    'indicator': True,
-    'decomposition': True,
+    'indicator': False,
+    'decomposition': False,
 }
 
 run_objectives = {
     'multi_obj': True,
-    'many_obj': True,
+    'many_obj': False,
 }
 
 run_robustness = {
     'single': True,
-    'multi': True,
-    'moro': True,
+    'multi': False,
+    'moro': False,
 }
 
 reward_dim_map = {
