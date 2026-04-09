@@ -1,5 +1,6 @@
 from ema_workbench import (Model, IntegerParameter, RealParameter, Constant)
-from fruit_tree_moea_2 import fruit_tree_inter, fruit_tree_dps, N_CENTERS
+from fruit_tree_moea import fruit_tree_inter, fruit_tree_dps, N_CENTERS
+from moea.params_config import non_observable_constants_2, non_observable_constants_6
 
 
 def inter_base_model(intertemporal, params):
@@ -63,11 +64,7 @@ def dps_two_objs_partially_observable_model(params, model_name):
     dps = dps_base_model(dps, params)
     dps.outcomes = params['outcomes']
 
-    dps.constants = [
-        Constant("depth", 7),
-        Constant("num_obj", 2),
-        Constant("observe", 0),
-    ]
+    dps.constants = non_observable_constants_2
 
     return dps
 
@@ -78,11 +75,7 @@ def dps_six_objs_partially_observable_model(params, model_name):
     dps = dps_base_model(dps, params)
     dps.outcomes = params['outcomes']
 
-    dps.constants = [
-        Constant("depth", 7),
-        Constant("num_obj", 6),
-        Constant("observe", 0),
-    ]
+    dps.constants = non_observable_constants_6
 
     return dps
 

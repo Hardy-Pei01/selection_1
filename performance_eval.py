@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pymoo.indicators.hv import HV
 
-data_dir = "./moea/data_3/six"
+data_dir = "./moea/data"
 
-ref_point_2 = np.array([10.0, 10.0])
-ref_point_6 = np.array([10.0] * 6)
+ref_point_2 = np.array([-10]*2)
+ref_point_6 = np.array([-10]*6)
 
 folder_names = []
 num_solutions = []

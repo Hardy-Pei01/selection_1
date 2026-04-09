@@ -41,18 +41,18 @@ def tree():
 
 
 nfe_settings = tree()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
-nfe_settings['dps']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['dps']['single']['many_obj']['non_param'] = 50000
-nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
-nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
-nfe_settings['dps']['multi']['multi_obj']['param'] = 50000
-nfe_settings['dps']['multi']['many_obj']['param'] = 50000
-nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 50000
-nfe_settings['intertemporal']['moro']['many_obj']['param'] = 50000
-nfe_settings['dps']['moro']['multi_obj']['param'] = 50000
-nfe_settings['dps']['moro']['many_obj']['param'] = 50000
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 10000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 10000
+nfe_settings['dps']['single']['multi_obj']['non_param'] = 10000
+nfe_settings['dps']['single']['many_obj']['non_param'] = 10000
+nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 10000
+nfe_settings['intertemporal']['multi']['many_obj']['param'] = 10000
+nfe_settings['dps']['multi']['multi_obj']['param'] = 10000
+nfe_settings['dps']['multi']['many_obj']['param'] = 10000
+nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 10000
+nfe_settings['intertemporal']['moro']['many_obj']['param'] = 10000
+nfe_settings['dps']['moro']['multi_obj']['param'] = 10000
+nfe_settings['dps']['moro']['many_obj']['param'] = 10000
 
 model_settings = tree()
 model_settings['intertemporal']['multi_obj']['non_param'] = (inter_model, 'interTwo')

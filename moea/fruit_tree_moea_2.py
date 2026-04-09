@@ -3,7 +3,7 @@ from fruit_tree import FruitTreeEnv
 
 
 N_CENTERS = 4
-PRESSURE = {0: 0.02, 1: 0.2}
+PRESSURE = {0: 0.02, 1: 0.1}
 
 
 def get_resource_pressure(x, action, b, q):
@@ -14,12 +14,10 @@ def get_resource_pressure(x, action, b, q):
     return recovery + tipping + extraction
 
 
-def fruit_tree_inter(depth, num_obj, observe, b=0.42, q=2.0, **kwargs):
-
-    assert depth in (5, 6, 7), "depth must be 5, 6, or 7"
+def fruit_tree_inter(depth, num_obj, csv_path, observe, b=0.42, q=2.0, **kwargs):
 
     decisions = [kwargs[f'l{i}'] for i in range(depth)]
-    env = FruitTreeEnv(depth=depth, reward_dim=num_obj, observe=True)
+    env = FruitTreeEnv(depth=depth, reward_dim=num_obj, csv_path=csv_path, observe=True)
     env.reset()
     x = 0
 
@@ -60,7 +58,7 @@ def get_action_rbf_improved(
     return 0 if score_left >= score_right else 1
 
 
-def fruit_tree_dps(depth, num_obj, observe, b=0.42, q=2.0, **kwargs):
+def fruit_tree_dps(depth, num_obj, csv_path, observe, b=0.42, q=2.0, **kwargs):
 
     assert depth in (5, 6, 7), "depth must be 5, 6, or 7"
 
@@ -80,6 +78,7 @@ def fruit_tree_dps(depth, num_obj, observe, b=0.42, q=2.0, **kwargs):
     env = FruitTreeEnv(
         depth=depth,
         reward_dim=num_obj,
+        csv_path=csv_path,
         observe=bool(observe),
     )
     state, _ = env.reset()

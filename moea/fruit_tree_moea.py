@@ -8,13 +8,13 @@ N_CENTERS = 4
 def fruit_tree_inter(
         depth,
         num_obj,
+        csv_path,
         observe,
         **kwargs
 ):
-    assert depth in (5, 6, 7), "depth must be 5, 6, or 7"
 
     decisions = [kwargs[f'l{i}'] for i in range(depth)]
-    env = FruitTreeEnv(depth=depth, reward_dim=num_obj, observe=True)
+    env = FruitTreeEnv(depth=depth, reward_dim=num_obj, csv_path=csv_path, observe=True)
     env.reset()
 
     reward = np.zeros(num_obj)
@@ -50,9 +50,7 @@ def get_action_rbf_improved(
     return 0 if score_left >= score_right else 1
 
 
-def fruit_tree_dps(depth, num_obj, observe, **kwargs):
-
-    assert depth in (5, 6, 7), "depth must be 5, 6, or 7"
+def fruit_tree_dps(depth, num_obj, csv_path, observe, **kwargs):
 
     n = N_CENTERS
 
@@ -70,6 +68,7 @@ def fruit_tree_dps(depth, num_obj, observe, **kwargs):
     env = FruitTreeEnv(
         depth=depth,
         reward_dim=num_obj,
+        csv_path=csv_path,
         observe=bool(observe),
     )
     state, _ = env.reset()
