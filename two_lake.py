@@ -1,0 +1,216 @@
+import numpy as np
+from gymnasium import spaces
+from scipy.optimize import brentq
+
+
+class TwoLakeEnv:
+
+    def __init__(
+            self,
+            # Lake 1 parameters
+            b1=0.42,
+            q1=2.0,
+            # Lake 2 parameters — deliberately different to ensure objective independence
+            b2=0.35,
+            q2=2.5,
+            # Shared inflow parameters
+            mean=0.02,
+            stdev=0.0017,
+            # Economic parameters
+            alpha=0.4,
+            delta=0.98,
+            # Time structure
+            total_years=100,
+            years_per_action=10,
+            # Seed for natural inflow generation — fixed for the lifetime of the env,
+            # independent of the episode seed passed to reset()
+            inflow_seed1=0,
+            inflow_seed2=0,
+            num_obj=2
+    ):
+        super().__init__()
+
+        # --- Lake parameters ---
+        self.b1, self.q1 = b1, q1
+        self.b2, self.q2 = b2, q2
+
+        # --- Inflow parameters ---
+        self.mean = mean
+        self.stdev = stdev
+        # Pre-compute log-normal transform once
+        self._ln_mean = np.log(mean ** 2 / np.sqrt(stdev ** 2 + mean ** 2))
+        self._ln_sigma = np.sqrt(np.log(1.0 + stdev ** 2 / mean ** 2))
+
+        # --- Economic parameters ---
+        self.alpha = alpha
+        self.delta = delta
+
+        # --- Time structure ---
+        self.total_years = total_years
+        self.years_per_action = years_per_action
+        self.n_gym_steps = total_years // years_per_action  # e.g. 10 steps
+        self.inflow_seed1 = inflow_seed1
+        self.inflow_seed2 = inflow_seed2
+        self.num_obj = num_obj
+
+        # --- Critical thresholds (solved once at construction) ---
+        self.Pcrit1 = brentq(
+            lambda x: x ** q1 / (1 + x ** q1) - b1 * x, 0.01, 1.5)
+        self.Pcrit2 = brentq(
+            lambda x: x ** q2 / (1 + x ** q2) - b2 * x, 0.01, 1.5)
+
+        # --- Natural inflows — generated once at construction using seed ---
+        # These are fixed across all episodes; only the policy decisions vary.
+        inflow_rng1 = np.random.default_rng(self.inflow_seed1)
+        self._inflows1 = inflow_rng1.lognormal(
+            self._ln_mean, self._ln_sigma, size=total_years)
+        inflow_rng2 = np.random.default_rng(self.inflow_seed2)
+        self._inflows2 = inflow_rng2.lognormal(
+            self._ln_mean, self._ln_sigma, size=total_years)
+
+        # --- Spaces ---
+        # Actions: emission level for each lake, held for years_per_action years
+        self.action_space = spaces.Box(
+            low=np.array([0.0, 0.0], dtype=np.float32),
+            high=np.array([0.10, 0.10], dtype=np.float32),
+            dtype=np.float32,
+        )
+
+        # Observations: [P_lake1, P_lake2]
+        self.observation_space = spaces.Box(
+            low=np.array([0.0, 0.0], dtype=np.float32),
+            high=np.array([10.0, 10.0], dtype=np.float32),
+            dtype=np.float32,
+        )
+
+        # Reward space (6 objectives) — informational, used by MORL libraries
+        self.reward_space = spaces.Box(
+            low=np.full(num_obj, -np.inf, dtype=np.float32),
+            high=np.full(num_obj, np.inf, dtype=np.float32),
+            dtype=np.float32,
+        )
+
+        # Internal state (initialised in reset)
+        self._X1 = None
+        self._X2 = None
+        self._gym_step = None
+        # nan sentinel — inertia is not counted for the first gym step,
+        # matching EMA workbench where np.diff starts from decisions[1]-decisions[0]
+        self._prev_u1 = np.nan
+        self._prev_u2 = np.nan
+
+    # ------------------------------------------------------------------
+    # Gymnasium API
+    # ------------------------------------------------------------------
+
+    def reset(self):
+        self._X1 = 0.0
+        self._X2 = 0.1
+        self._gym_step = 0
+        self._prev_u1 = np.nan
+        self._prev_u2 = np.nan
+
+        return self._obs()
+
+    def step(self, action):
+        u1 = float(np.clip(action[0], 0.0, 0.10))
+        u2 = float(np.clip(action[1], 0.0, 0.10))
+
+        # --- Simulate years_per_action years of lake dynamics ---
+        X1_traj, X2_traj, X1_new, X2_new = self._simulate(u1, u2)
+
+        # --- Update internal state ---
+        self._X1 = float(X1_new)
+        self._X2 = float(X2_new)
+
+        # --- Compute 6 objectives ---
+        # Absolute year indices for discounting
+        year_start = self._gym_step * self.years_per_action
+        years = np.arange(year_start, year_start + self.years_per_action)
+        discount = np.power(self.delta, years)
+
+        utility1 = float(np.sum(self.alpha * u1 * discount))
+        utility2 = float(np.sum(self.alpha * u2 * discount))
+        reliability1 = float(np.mean(X1_traj < self.Pcrit1))
+        reliability2 = float(np.mean(X2_traj < self.Pcrit2))
+        inertia1 = (float(not np.isnan(self._prev_u1) and abs(u1 - self._prev_u1) > 0.02)
+                    * self.years_per_action / self.total_years)
+        inertia2 = (float(not np.isnan(self._prev_u2) and abs(u2 - self._prev_u2) > 0.02)
+                    * self.years_per_action / self.total_years)
+
+        # Reward vector — sign convention: positive = better for the agent
+        # RL maximises rewards, so minimisation objectives are negated
+        rewards = np.array([
+            -utility1,  # minimise (negate utility lake 1)
+            -utility2,  # minimise (negate utility lake 2)
+            -reliability1,  # minimise (negate reliability lake 1)
+            -reliability2,  # minimise (negate reliability lake 2)
+            inertia1,  # minimise (large changes = bad, already positive)
+            inertia2,  # minimise (large changes = bad, already positive)
+        ], dtype=np.float32)
+
+        # --- Advance step counter ---
+        self._prev_u1 = u1
+        self._prev_u2 = u2
+        self._gym_step += 1
+
+        terminated = self._gym_step >= self.n_gym_steps
+
+        if self.num_obj == 2:
+            rewards = rewards[[0, 2]]  # -utility1, -reliability1
+
+        return self._obs(), rewards, terminated
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _obs(self) -> np.ndarray:
+        return np.array([self._X1, self._X2], dtype=np.float32)
+
+    def _simulate(self, u1: float, u2: float):
+        """
+        Run years_per_action steps of both lake dynamics, reading
+        pre-computed inflows from the episode arrays.
+        """
+        year_start = self._gym_step * self.years_per_action
+        inflows1 = self._inflows1[year_start:year_start + self.years_per_action]
+        inflows2 = self._inflows2[year_start:year_start + self.years_per_action]
+
+        n = self.years_per_action
+        X1_traj = np.empty(n)
+        X2_traj = np.empty(n)
+
+        X1, X2 = self._X1, self._X2
+        b1, q1 = self.b1, self.q1
+        b2, q2 = self.b2, self.q2
+
+        # First element: pre-step state (X[0]=0 for step 0, X[10] for step 1, ...)
+        # This ensures trajectories span X[0..total_years-1], matching EMA's convention.
+        X1_traj[0] = X1
+        X2_traj[0] = X2
+
+        # n-1 updates stored in trajectory  (inflows[0..n-2])
+        for i in range(1, n):
+            X1 = ((1 - b1) * X1
+                  + X1 ** q1 / (1 + X1 ** q1)
+                  + u1
+                  + inflows1[i - 1])
+            X2 = ((1 - b2) * X2
+                  + X2 ** q2 / (1 + X2 ** q2)
+                  + u2
+                  + inflows2[i - 1])
+            X1_traj[i] = X1
+            X2_traj[i] = X2
+
+        # Final update for new env state — uses inflows[n-1], not stored in trajectory
+        X1_new = ((1 - b1) * X1
+                  + X1 ** q1 / (1 + X1 ** q1)
+                  + u1
+                  + inflows1[n - 1])
+        X2_new = ((1 - b2) * X2
+                  + X2 ** q2 / (1 + X2 ** q2)
+                  + u2
+                  + inflows2[n - 1])
+
+        return X1_traj, X2_traj, X1_new, X2_new

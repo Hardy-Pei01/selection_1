@@ -15,16 +15,16 @@ def percentile_20(outcomes):
 def build_robustness_functions(num_obj):
     return [
         ScalarOutcome(
-            f'p20_o{i+1}',
+            f'p20_o{i + 1}',
             kind=ScalarOutcome.MINIMIZE,
-            variable_name=f'o{i+1}',
+            variable_name=f'o{i + 1}',
             function=percentile_20
         )
         for i in range(num_obj)
     ]
 
 
-def buildOptimizationScenarios(model, params):
+def build_optimization_scenarios(model, params):
     return sample_uncertainties(model, 50)
 
 
@@ -35,7 +35,7 @@ def run_moea(model, params, file_end, start_time):
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
 
-    scenarios = buildOptimizationScenarios(model, params)
+    scenarios = build_optimization_scenarios(model, params)
     robustnessFunctions = build_robustness_functions(len(model.outcomes))
 
     with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:

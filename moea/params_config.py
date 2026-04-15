@@ -1,57 +1,107 @@
-from ema_workbench import (RealParameter, ScalarOutcome, Constant)
+from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-depth = 12
+tree_depth = 12
+tree_multi_obj = 2
+tree_many_obj = 8
+lake_multi_obj = 2
+lake_many_obj = 6
 
-multi_objs_model_params = {
-    'depth': depth,
+multi_objs_tree_params = {
+    'depth': tree_depth,
 
     'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
 
-    'outcomes': [ScalarOutcome('o1', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o2', kind=ScalarOutcome.MINIMIZE)],
+    'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE) for i in range(tree_multi_obj)],
 
     'constants': [
-        Constant("depth", depth),
-        Constant("num_obj", 2),
-        Constant("csv_path", f"./fruits/depth{depth}_dim2.csv"),
+        Constant("depth", tree_depth),
+        Constant("num_obj", tree_multi_obj),
+        Constant("csv_path", f"./fruits/depth{tree_depth}_dim2.csv"),
         Constant("observe", 1),
     ]
 }
 
-many_objs_model_params = {
-    'depth': depth,
+many_objs_tree_params = {
+    'depth': tree_depth,
 
     'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
 
-    'outcomes': [ScalarOutcome('o1', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o2', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o3', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o4', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o5', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o6', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o7', kind=ScalarOutcome.MINIMIZE),
-                 ScalarOutcome('o8', kind=ScalarOutcome.MINIMIZE)],
+    'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE) for i in range(tree_many_obj)],
 
     'constants': [
-        Constant("depth", depth),
-        Constant("num_obj", 8),
-        Constant("csv_path", f"./fruits/depth{depth}_dim8.csv"),
+        Constant("depth", tree_depth),
+        Constant("num_obj", tree_many_obj),
+        Constant("csv_path", f"./fruits/depth{tree_depth}_dim8.csv"),
         Constant("observe", 1),
     ]
 }
 
-default_scenario = {'slip_prob': 0.0}
+default_tree_scenario = {'slip_prob': 0.0}
 
 non_observable_constants_multi = [
-    Constant("depth", depth),
-    Constant("num_obj", 2),
-    Constant("csv_path", f"./fruits/depth{depth}_dim2.csv"),
+    Constant("depth", tree_depth),
+    Constant("num_obj", tree_multi_obj),
+    Constant("csv_path", f"./fruits/depth{tree_depth}_dim2.csv"),
     Constant("observe", 0),
 ]
 
 non_observable_constants_many = [
-    Constant("depth", depth),
-    Constant("num_obj", 8),
-    Constant("csv_path", f"./fruits/depth{depth}_dim8.csv"),
+    Constant("depth", tree_depth),
+    Constant("num_obj", tree_many_obj),
+    Constant("csv_path", f"./fruits/depth{tree_depth}_dim8.csv"),
     Constant("observe", 0),
 ]
+
+# ------------------------------------------------------------------
+# Two-lake model params
+# ------------------------------------------------------------------
+multi_objs_lake_params = {
+    'uncertainties': [
+        RealParameter('b1', 0.10, 0.45),
+        RealParameter('q1', 2.0,  4.5),
+        RealParameter('b2', 0.10, 0.45),
+        RealParameter('q2', 2.0,  4.5),
+        IntegerParameter('inflow_seed1', 0, 1000000),
+        IntegerParameter('inflow_seed2', 0, 1000000),
+    ],
+
+    'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE)
+                 for i in range(lake_multi_obj)],
+
+    'constants': [
+        Constant("num_obj", lake_multi_obj),
+        Constant("alpha", 0.4),
+        Constant("delta", 0.98),
+        Constant("total_years", 100),
+        Constant("years_per_action", 10),
+    ]
+}
+
+many_objs_lake_params = {
+    'uncertainties': [
+        RealParameter('b1', 0.10, 0.45),
+        RealParameter('q1', 2.0,  4.5),
+        RealParameter('b2', 0.10, 0.45),
+        RealParameter('q2', 2.0,  4.5),
+        IntegerParameter('inflow_seed1', 0, 1000000),
+        IntegerParameter('inflow_seed2', 0, 1000000),
+    ],
+
+    'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE)
+                 for i in range(lake_many_obj)],
+
+    'constants': [
+        Constant("num_obj", lake_many_obj),
+        Constant("alpha", 0.4),
+        Constant("delta", 0.98),
+        Constant("total_years", 100),
+        Constant("years_per_action", 10),
+    ]
+}
+
+default_lake_scenario = {
+    'b1': 0.42, 'q1': 2.0,
+    'b2': 0.35, 'q2': 2.5,
+    'inflow_seed1': 0,
+    'inflow_seed2': 0,
+}
