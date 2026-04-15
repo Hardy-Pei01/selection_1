@@ -1,10 +1,7 @@
 import os
 import pandas as pd
-from ema_workbench import (MultiprocessingEvaluator, SequentialEvaluator,
-                           save_results, load_results)
-from ema_workbench.em_framework.optimization import (Convergence, HyperVolume,
-                                                     EpsilonProgress,
-                                                     ArchiveLogger)
+from ema_workbench import (MultiprocessingEvaluator, SequentialEvaluator)
+from ema_workbench.em_framework.optimization import (EpsilonProgress)
 import time
 
 
@@ -15,7 +12,7 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
 
-    with SequentialEvaluator(model) as evaluator:
+    with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
         arch, conv = evaluator.optimize(
             algorithm=params.algorithm,
             nfe=params.nfe,
@@ -23,7 +20,7 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
             reference=reference,
             epsilons=params.epsilons,
             convergence=[EpsilonProgress()],
-            population_size=150
+            population_size=100
         )
 
     if ref_num is not None:

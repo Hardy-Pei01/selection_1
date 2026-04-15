@@ -1,10 +1,10 @@
 from ema_workbench import ema_logging
-from params_config import two_objs_model_params, six_objs_model_params
-from method_config import multi_params, moro_params, moea_moro, moea_multi
-from model_builder import (inter_model, inter_robust_model, dps_model,
-                           dps_two_objs_partially_observable_model,
-                           dps_six_objs_partially_observable_model,
-                           dps_robust_model)
+from moea.params_config import multi_objs_model_params, many_objs_model_params
+from moea.method_config import multi_params, moro_params, moea_moro, moea_multi
+from moea.model_builder import (inter_model, inter_robust_model, dps_model,
+                                dps_multi_objs_partially_observable_model,
+                                dps_many_objs_partially_observable_model,
+                                dps_robust_model)
 from collections import defaultdict
 import time
 
@@ -30,6 +30,7 @@ obj_uncertain = {
     'multi_obj': True,
     'many_obj': True
 }
+
 param_uncertain = {
     'non_param': True,
     'param': False
@@ -41,18 +42,18 @@ def tree():
 
 
 nfe_settings = tree()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 10000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 10000
-nfe_settings['dps']['single']['multi_obj']['non_param'] = 10000
-nfe_settings['dps']['single']['many_obj']['non_param'] = 10000
-nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 10000
-nfe_settings['intertemporal']['multi']['many_obj']['param'] = 10000
-nfe_settings['dps']['multi']['multi_obj']['param'] = 10000
-nfe_settings['dps']['multi']['many_obj']['param'] = 10000
-nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 10000
-nfe_settings['intertemporal']['moro']['many_obj']['param'] = 10000
-nfe_settings['dps']['moro']['multi_obj']['param'] = 10000
-nfe_settings['dps']['moro']['many_obj']['param'] = 10000
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
+nfe_settings['dps']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['dps']['single']['many_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
+nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
+nfe_settings['dps']['multi']['multi_obj']['param'] = 50000
+nfe_settings['dps']['multi']['many_obj']['param'] = 50000
+nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 50000
+nfe_settings['intertemporal']['moro']['many_obj']['param'] = 50000
+nfe_settings['dps']['moro']['multi_obj']['param'] = 50000
+nfe_settings['dps']['moro']['many_obj']['param'] = 50000
 
 model_settings = tree()
 model_settings['intertemporal']['multi_obj']['non_param'] = (inter_model, 'interTwo')
@@ -103,10 +104,10 @@ if __name__ == '__main__':
                         else:
                             raise Exception
                         if key_4 == "multi_obj":
-                            model_params = two_objs_model_params
+                            model_params = multi_objs_model_params
                             many_obj = False
                         elif key_4 == "many_obj":
-                            model_params = six_objs_model_params
+                            model_params = many_objs_model_params
                             many_obj = True
                         else:
                             raise Exception

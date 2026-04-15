@@ -38,6 +38,7 @@ class FruitTreeEnv(object):
         '''
         self.current_state = np.array([0, 0])
         self.terminal = False
+        return self.current_state.copy()
 
     def step(self, action):
         '''

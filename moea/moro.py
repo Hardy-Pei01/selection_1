@@ -1,51 +1,31 @@
 import os
 import time
 
-from ema_workbench import (Model, RealParameter, ScalarOutcome,
-                           Constant, ReplicatorModel, Constraint,
-                           Scenario, MultiprocessingEvaluator,
-                           SequentialEvaluator)
-from ema_workbench.em_framework.samplers import (sample_uncertainties,
-                                                 DefaultDesigns)
-from ema_workbench.em_framework.optimization import (Convergence, HyperVolume,
-                                                     EpsilonProgress,
-                                                     ArchiveLogger)
+from ema_workbench import (ScalarOutcome, MultiprocessingEvaluator, SequentialEvaluator)
+from ema_workbench.em_framework.samplers import sample_uncertainties
+from ema_workbench.em_framework.optimization import EpsilonProgress
 
-import pandas as pd
 import numpy as np
-import functools
 
 
-def countRobust(robustThreshold, outcomes):
-    return np.sum(outcomes >= robustThreshold) / outcomes.shape[0]
+def percentile_20(outcomes):
+    return -np.percentile(outcomes, 20)
 
 
-maxp = functools.partial(countRobust, 0.8)
-reliability = functools.partial(countRobust, -0.99)
-utility = functools.partial(countRobust, -0.8)
-inertia = functools.partial(countRobust, -0.8)
-
-robustnessFunctions = [ScalarOutcome('fraction max_P',
-                                     kind=ScalarOutcome.MINIMIZE,
-                                     variable_name='max_P',
-                                     function=maxp),
-                       ScalarOutcome('fraction reliability',
-                                     kind=ScalarOutcome.MINIMIZE,
-                                     variable_name='negative_utility',
-                                     function=reliability),
-                       ScalarOutcome('fraction inertia',
-                                     kind=ScalarOutcome.MINIMIZE,
-                                     variable_name='negative_inertia',
-                                     function=inertia),
-                       ScalarOutcome('fraction utility',
-                                     kind=ScalarOutcome.MINIMIZE,
-                                     variable_name='negative_utility',
-                                     function=utility)]
+def build_robustness_functions(num_obj):
+    return [
+        ScalarOutcome(
+            f'p20_o{i+1}',
+            kind=ScalarOutcome.MINIMIZE,
+            variable_name=f'o{i+1}',
+            function=percentile_20
+        )
+        for i in range(num_obj)
+    ]
 
 
 def buildOptimizationScenarios(model, params):
-    scenarios = sample_uncertainties(model, 50)
-    return scenarios
+    return sample_uncertainties(model, 50)
 
 
 def run_moea(model, params, file_end, start_time):
@@ -56,6 +36,7 @@ def run_moea(model, params, file_end, start_time):
         os.makedirs(params.output_folder)
 
     scenarios = buildOptimizationScenarios(model, params)
+    robustnessFunctions = build_robustness_functions(len(model.outcomes))
 
     with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
         arch, conv = evaluator.robust_optimize(
@@ -65,7 +46,7 @@ def run_moea(model, params, file_end, start_time):
             nfe=params.nfe,
             epsilons=params.epsilons,
             convergence=[EpsilonProgress()],
-            population_size=150
+            population_size=100
         )
 
         elapsed = int(time.time() - start_time)

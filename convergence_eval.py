@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-data_dir = "./moea/data"
+data_dir = "./data1"
 
 for folder_name in sorted(os.listdir(data_dir)):
     folder_path = os.path.join(data_dir, folder_name)

@@ -9,7 +9,7 @@ def generate_leaf_rewards(depth, reward_dim, seed=None):
     rng = np.random.default_rng(seed)
 
     n_leaves = 2 ** depth
-    rewards = np.random.randn(2 ** depth, reward_dim)
+    rewards = rng.standard_normal((n_leaves, reward_dim))
     rewards = np.abs(rewards) / np.linalg.norm(rewards, 2, 1, True)
     rewards = rewards * -10.0
 
@@ -32,6 +32,6 @@ def main(depth, reward_dim, seed):
 
 
 if __name__ == "__main__":
-    depth = 15
+    depth = 10
     main(depth=depth, reward_dim=2, seed=1)
-    main(depth=depth, reward_dim=6, seed=1)
+    main(depth=depth, reward_dim=8, seed=1)

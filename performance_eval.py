@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pymoo.indicators.hv import HV
 
-data_dir = "./moea/data"
+data_dir = "./data1"
 
 ref_point_2 = np.array([-10]*2)
 ref_point_6 = np.array([-10]*6)
@@ -65,5 +65,10 @@ ax.spines["right"].set_visible(False)
 ax.grid(axis="y", linestyle="--", alpha=0.4)
 
 plt.tight_layout()
-plt.savefig("six_uncertain.png", dpi=150, bbox_inches="tight")
+# plt.savefig("multi_uncertain.png", dpi=150, bbox_inches="tight")
 plt.show()
+
+
+# A line of each algorithm performance with the depth increasing (2-objective and 8-objective)
+# A line of ratio with the depth increasing
+# Path dependent fruit tree
