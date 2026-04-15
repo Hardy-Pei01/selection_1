@@ -1,5 +1,6 @@
 import numpy as np
 from fruit_tree import FruitTreeEnv
+SEED = 42
 
 
 def get_action_linear(state, w0, w1, threshold, norm_scale):
@@ -10,7 +11,7 @@ def get_action_linear(state, w0, w1, threshold, norm_scale):
 def fruit_tree_inter(depth, num_obj, csv_path, observe, **kwargs):
     decisions = [kwargs[f'l{i}'] for i in range(depth)]
     env = FruitTreeEnv(depth=depth, reward_dim=num_obj, csv_path=csv_path, observe=True)
-    env.reset()
+    env.reset(SEED)
 
     reward = np.zeros(num_obj)
     for step in range(depth):
@@ -21,27 +22,21 @@ def fruit_tree_inter(depth, num_obj, csv_path, observe, **kwargs):
     return {f'o{i + 1}': reward[i] for i in range(num_obj)}
 
 
-def fruit_tree_dps(depth, num_obj, csv_path, observe, **kwargs):
-    w0 = kwargs['w0']
-    w1 = kwargs['w1']
-    threshold = kwargs['threshold']
+def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
+    n_internal = 2 ** depth - 1
+    table = [int(kwargs[f'n{i}']) for i in range(n_internal)]
 
-    max_pos = 2 ** depth - 1
-    norm_scale = np.array([depth, max_pos])
-
-    env = FruitTreeEnv(
-        depth=depth,
-        reward_dim=num_obj,
-        csv_path=csv_path,
-        observe=bool(observe),
-    )
-    state = env.reset()
+    env = FruitTreeEnv(depth=depth, reward_dim=num_obj,
+                       csv_path=csv_path, observe=bool(observe))
+    env.reset(SEED)
 
     reward = np.zeros(num_obj)
     for _ in range(depth):
-        action = get_action_linear(state, w0, w1, threshold, norm_scale)
-        state, reward, terminal = env.step(action)
+        level, pos = env.current_state
+        node_id = int(2 ** level - 1) + pos
+        action = table[node_id]
+        _, reward, terminal = env.step(action)
         if terminal:
             break
 
-    return {f'o{i + 1}': reward[i] for i in range(num_obj)}
+    return {f'o{i+1}': reward[i] for i in range(num_obj)}

@@ -20,7 +20,7 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
             reference=reference,
             epsilons=params.epsilons,
             convergence=[EpsilonProgress()],
-            population_size=100
+            population_size=150
         )
 
     if ref_num is not None:

@@ -46,7 +46,7 @@ def run_moea(model, params, file_end, start_time):
             nfe=params.nfe,
             epsilons=params.epsilons,
             convergence=[EpsilonProgress()],
-            population_size=100
+            population_size=150
         )
 
         elapsed = int(time.time() - start_time)

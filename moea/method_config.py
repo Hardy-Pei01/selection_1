@@ -1,6 +1,6 @@
 from moea.params_config import default_scenario
-import moea.multi
-import moea.moro
+import moea.multi as multi
+import moea.moro as moro
 from ema_workbench import (Scenario)
 from moea.algos import NSGAII, IBEA, MOEAD
 
@@ -32,11 +32,12 @@ class multi_params(base_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
         super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
 
-        self.references = \
-            [{'w': 0},
-             {'w': 0.25},
-             {'w': 0.75},
-             {'w': 1}]
+        self.references = [
+            {'slip_prob': 0.05},
+            {'slip_prob': 0.1},
+            {'slip_prob': 0.15},
+            {'slip_prob': 0.2},
+        ]
 
 
 class moro_params(base_params):

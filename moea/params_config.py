@@ -5,7 +5,7 @@ depth = 10
 multi_objs_model_params = {
     'depth': depth,
 
-    'uncertainties': [RealParameter('w', 0, 1)],
+    'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
 
     'outcomes': [ScalarOutcome('o1', kind=ScalarOutcome.MINIMIZE),
                  ScalarOutcome('o2', kind=ScalarOutcome.MINIMIZE)],
@@ -13,7 +13,7 @@ multi_objs_model_params = {
     'constants': [
         Constant("depth", depth),
         Constant("num_obj", 2),
-        Constant("csv_path", "./fruits/depth10_dim2.csv"),
+        Constant("csv_path", f"./fruits/depth{depth}_dim2.csv"),
         Constant("observe", 1),
     ]
 }
@@ -21,7 +21,7 @@ multi_objs_model_params = {
 many_objs_model_params = {
     'depth': depth,
 
-    'uncertainties': [RealParameter('w', 0, 1)],
+    'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
 
     'outcomes': [ScalarOutcome('o1', kind=ScalarOutcome.MINIMIZE),
                  ScalarOutcome('o2', kind=ScalarOutcome.MINIMIZE),
@@ -35,25 +35,23 @@ many_objs_model_params = {
     'constants': [
         Constant("depth", depth),
         Constant("num_obj", 8),
-        Constant("csv_path", "./fruits/depth10_dim8.csv"),
+        Constant("csv_path", f"./fruits/depth{depth}_dim8.csv"),
         Constant("observe", 1),
     ]
 }
 
-default_scenario = {
-    'w': 0.5
-}
+default_scenario = {'slip_prob': 0.0}
 
 non_observable_constants_multi = [
     Constant("depth", depth),
     Constant("num_obj", 2),
-    Constant("csv_path", "./fruits/depth10_dim2.csv"),
+    Constant("csv_path", f"./fruits/depth{depth}_dim2.csv"),
     Constant("observe", 0),
 ]
 
 non_observable_constants_many = [
     Constant("depth", depth),
     Constant("num_obj", 8),
-    Constant("csv_path", "./fruits/depth10_dim8.csv"),
+    Constant("csv_path", f"./fruits/depth{depth}_dim8.csv"),
     Constant("observe", 0),
 ]
