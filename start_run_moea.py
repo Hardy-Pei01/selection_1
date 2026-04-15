@@ -1,5 +1,5 @@
 from ema_workbench import ema_logging
-from moea.params_config import multi_objs_model_params, many_objs_model_params
+from moea.params_config import multi_objs_model_params, many_objs_model_params, depth
 from moea.method_config import multi_params, moro_params, moea_moro, moea_multi
 from moea.model_builder import (inter_model, inter_robust_model, table_model,
                                 table_multi_objs_partially_observable_model,
@@ -9,11 +9,11 @@ from collections import defaultdict
 import time
 
 activate_logging = True
-root_folder = './data'
+root_folder = f'./data_{depth}'
 
 run_policy = {
-    'intertemporal': True,
-    'table': False
+    'intertemporal': False,
+    'table': True
 }
 run_evo_method = {
     'NSGAII': True,
@@ -42,10 +42,10 @@ def tree():
 
 
 nfe_settings = tree()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 15000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 15000
-nfe_settings['table']['single']['multi_obj']['non_param'] = 15000
-nfe_settings['table']['single']['many_obj']['non_param'] = 15000
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
+nfe_settings['table']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['table']['single']['many_obj']['non_param'] = 50000
 nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
 nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
 nfe_settings['table']['multi']['multi_obj']['param'] = 50000
@@ -56,14 +56,14 @@ nfe_settings['table']['moro']['multi_obj']['param'] = 50000
 nfe_settings['table']['moro']['many_obj']['param'] = 50000
 
 model_settings = tree()
-model_settings['intertemporal']['multi_obj']['non_param'] = (inter_model, 'interTwo')
-model_settings['intertemporal']['many_obj']['non_param'] = (inter_model, 'interSix')
-model_settings['intertemporal']['multi_obj']['param'] = (inter_robust_model, 'interTwoRobust')
-model_settings['intertemporal']['many_obj']['param'] = (inter_robust_model, 'interSixRobust')
-model_settings['table']['multi_obj']['non_param'] = (table_model, 'tableTwo')
-model_settings['table']['many_obj']['non_param'] = (table_model, 'tableSix')
-model_settings['table']['multi_obj']['param'] = (table_robust_model, 'tableTwoRobust')
-model_settings['table']['many_obj']['param'] = (table_robust_model, 'tableSixRobust')
+model_settings['intertemporal']['multi_obj']['non_param'] = (inter_model, 'interMulti')
+model_settings['intertemporal']['many_obj']['non_param'] = (inter_model, 'interMany')
+model_settings['intertemporal']['multi_obj']['param'] = (inter_robust_model, 'interMultiRobust')
+model_settings['intertemporal']['many_obj']['param'] = (inter_robust_model, 'interManyRobust')
+model_settings['table']['multi_obj']['non_param'] = (table_model, 'tableMulti')
+model_settings['table']['many_obj']['non_param'] = (table_model, 'tableMany')
+model_settings['table']['multi_obj']['param'] = (table_robust_model, 'tableMultiRobust')
+model_settings['table']['many_obj']['param'] = (table_robust_model, 'tableManyRobust')
 
 if __name__ == '__main__':
     if (activate_logging):

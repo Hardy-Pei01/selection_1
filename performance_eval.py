@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pymoo.indicators.hv import HV
 
-data_dir = "./data1"
+depth = 12
+data_dir = f"./data_{depth}"
 
-ref_point_2 = np.array([-10]*2)
-ref_point_6 = np.array([-10]*6)
+# ref_point_2 = np.array([-10]*2)
+# ref_point_6 = np.array([-10]*6)
 
 folder_names = []
 num_solutions = []
@@ -22,15 +23,16 @@ for folder_name in sorted(os.listdir(data_dir)):
     files = sorted(os.listdir(folder_path))
     if not files:
         continue
+    csv_files = [f for f in files if f.endswith(".csv")]
 
-    archive_file = os.path.join(folder_path, files[0])
+    archive_file = os.path.join(folder_path, csv_files[0])
     df = pd.read_csv(archive_file)
 
     obj_cols = [c for c in df.columns if c.startswith('o')]
     objectives = df[obj_cols].values
 
-    ref_point = ref_point_6 if len(obj_cols) == 6 else ref_point_2
-    hv = HV(ref_point=ref_point)
+    # ref_point = ref_point_6 if len(obj_cols) == 6 else ref_point_2
+    # hv = HV(ref_point=ref_point)
 
     folder_names.append(folder_name)
     num_solutions.append(len(objectives))

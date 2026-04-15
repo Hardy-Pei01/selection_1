@@ -1,6 +1,6 @@
 from ema_workbench import (RealParameter, ScalarOutcome, Constant)
 
-depth = 10
+depth = 12
 
 multi_objs_model_params = {
     'depth': depth,
