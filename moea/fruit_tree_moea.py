@@ -1,11 +1,6 @@
 import numpy as np
 from fruit_tree import FruitTreeEnv
-SEED = 42
-
-
-def get_action_linear(state, w0, w1, threshold, norm_scale):
-    s = state / norm_scale
-    return 1 if (w0 * s[0] + w1 * s[1]) > threshold else 0
+SEED = None
 
 
 def fruit_tree_inter(depth, num_obj, csv_path, observe, **kwargs):

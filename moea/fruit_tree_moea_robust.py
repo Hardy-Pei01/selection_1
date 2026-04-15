@@ -1,6 +1,6 @@
 import numpy as np
 from fruit_tree import FruitTreeEnv
-SEED = 42
+SEED = None
 
 
 def fruit_tree_inter_robust(depth, num_obj, csv_path, observe, slip_prob=0.0, **kwargs):

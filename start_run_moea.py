@@ -13,7 +13,7 @@ root_folder = './data'
 
 run_policy = {
     'intertemporal': True,
-    'table': True
+    'table': False
 }
 run_evo_method = {
     'NSGAII': True,
