@@ -1,5 +1,5 @@
 from ema_workbench import ema_logging
-from moea.params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth
+from moea.params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_many_obj
 from moea.method_config import multi_tree_params, moro_tree_params, moea_moro, moea_multi
 from moea.model_builder import (inter_tree_model, inter_robust_tree_model, table_tree_model,
                                 table_multi_objs_partially_observable_tree_model,
@@ -9,10 +9,10 @@ from collections import defaultdict
 import time
 
 activate_logging = True
-root_folder = f'./data_{tree_depth}'
+root_folder = f'./data_{tree_depth}_{tree_many_obj}'
 
 run_policy = {
-    'intertemporal': False,
+    'intertemporal': True,
     'table': True
 }
 run_evo_method = {
@@ -21,9 +21,9 @@ run_evo_method = {
     'MOEAD': True
 }
 run_scenario_method = {
-    'single': True,
+    'single': False,
     'multi': False,
-    'moro': False
+    'moro': True
 }
 
 obj_uncertain = {
@@ -32,8 +32,8 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'non_param': True,
-    'param': False
+    'non_param': False,
+    'param': True
 }
 
 

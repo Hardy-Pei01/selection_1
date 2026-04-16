@@ -1,6 +1,6 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 12
+tree_depth = 10
 tree_multi_obj = 2
 tree_many_obj = 8
 lake_multi_obj = 2
@@ -16,7 +16,7 @@ multi_objs_tree_params = {
     'constants': [
         Constant("depth", tree_depth),
         Constant("num_obj", tree_multi_obj),
-        Constant("csv_path", f"./fruits/depth{tree_depth}_dim2.csv"),
+        Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_multi_obj}.csv"),
         Constant("observe", 1),
     ]
 }
@@ -31,7 +31,7 @@ many_objs_tree_params = {
     'constants': [
         Constant("depth", tree_depth),
         Constant("num_obj", tree_many_obj),
-        Constant("csv_path", f"./fruits/depth{tree_depth}_dim8.csv"),
+        Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_many_obj}.csv"),
         Constant("observe", 1),
     ]
 }
@@ -41,14 +41,14 @@ default_tree_scenario = {'slip_prob': 0.0}
 non_observable_constants_multi = [
     Constant("depth", tree_depth),
     Constant("num_obj", tree_multi_obj),
-    Constant("csv_path", f"./fruits/depth{tree_depth}_dim2.csv"),
+    Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_multi_obj}.csv"),
     Constant("observe", 0),
 ]
 
 non_observable_constants_many = [
     Constant("depth", tree_depth),
     Constant("num_obj", tree_many_obj),
-    Constant("csv_path", f"./fruits/depth{tree_depth}_dim8.csv"),
+    Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_many_obj}.csv"),
     Constant("observe", 0),
 ]
 
