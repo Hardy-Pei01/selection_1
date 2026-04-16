@@ -118,9 +118,9 @@ if __name__ == '__main__':
                             method_params = moro_tree_params(name=name, nfe=nfe, algo=key_2,
                                                              root_folder=root_folder, many_obj=many_obj,
                                                              robust=robust, scenarios=scenarios)
-                            moea_moro(model, method_params, start_time)
+                            moea_moro(model, method_params, start_time, problem='tree')
                         else:
                             method_params = multi_tree_params(name=name, nfe=nfe, algo=key_2,
                                                               root_folder=root_folder, many_obj=many_obj,
                                                               robust=robust, scenarios=scenarios)
-                            moea_multi(model, method_params, start_time, scenario_key='tree')
+                            moea_multi(model, method_params, start_time, problem='tree')

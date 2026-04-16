@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-depth = 12
+depth = 'lake'
 data_dir = f"./data_{depth}"
 
 for folder_name in sorted(os.listdir(data_dir)):

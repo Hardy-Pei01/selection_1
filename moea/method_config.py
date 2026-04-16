@@ -85,11 +85,11 @@ def output_file_end(model, params):
     return f'{model.name}_{params.algo_name}_{params.nfe}'
 
 
-def moea_multi(model, params, start_time, scenario_key):
+def moea_multi(model, params, start_time, problem):
     archives = []
     convergences = []
 
-    base = default_tree_scenario if scenario_key == 'tree' else default_lake_scenario
+    base = default_tree_scenario if problem == 'tree' else default_lake_scenario
     if not params.robust:
         refs = [base]
     else:
@@ -108,8 +108,9 @@ def moea_multi(model, params, start_time, scenario_key):
     return archives, convergences
 
 
-def moea_moro(model, params, start_time):
+def moea_moro(model, params, start_time, problem):
     file_end = output_file_end(model, params)
     return moro.run_moea(model, params=params,
                          file_end=file_end,
-                         start_time=start_time)
+                         start_time=start_time,
+                         problem=problem)

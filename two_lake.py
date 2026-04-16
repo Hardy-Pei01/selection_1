@@ -70,11 +70,7 @@ class TwoLakeEnv:
 
         # --- Spaces ---
         # Actions: emission level for each lake, held for years_per_action years
-        self.action_space = spaces.Box(
-            low=np.array([0.0, 0.0], dtype=np.float32),
-            high=np.array([0.10, 0.10], dtype=np.float32),
-            dtype=np.float32,
-        )
+        self.action_space = spaces.MultiDiscrete([11, 11])
 
         # Observations: [P_lake1, P_lake2]
         self.observation_space = spaces.Box(
@@ -113,8 +109,8 @@ class TwoLakeEnv:
         return self._obs()
 
     def step(self, action):
-        u1 = float(np.clip(action[0], 0.0, 0.10))
-        u2 = float(np.clip(action[1], 0.0, 0.10))
+        u1 = action[0] / 100
+        u2 = action[1] / 100
 
         # --- Simulate years_per_action years of lake dynamics ---
         X1_traj, X2_traj, X1_new, X2_new = self._simulate(u1, u2)
@@ -131,8 +127,8 @@ class TwoLakeEnv:
 
         utility1 = float(np.sum(self.alpha * u1 * discount))
         utility2 = float(np.sum(self.alpha * u2 * discount))
-        reliability1 = float(np.mean(X1_traj < self.Pcrit1))
-        reliability2 = float(np.mean(X2_traj < self.Pcrit2))
+        reliability1 = (float(np.mean(X1_traj < self.Pcrit1)) * self.years_per_action / self.total_years)
+        reliability2 = (float(np.mean(X2_traj < self.Pcrit2)) * self.years_per_action / self.total_years)
         inertia1 = (float(not np.isnan(self._prev_u1) and abs(u1 - self._prev_u1) > 0.02)
                     * self.years_per_action / self.total_years)
         inertia2 = (float(not np.isnan(self._prev_u2) and abs(u2 - self._prev_u2) > 0.02)

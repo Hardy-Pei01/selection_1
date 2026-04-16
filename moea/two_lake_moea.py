@@ -5,7 +5,8 @@ from two_lake import TwoLakeEnv
 def get_emission(xt, c1, c2, r1, r2, w1):
     """Single-lake cubic RBF policy — mirrors the original EMA lake DPS."""
     rule = w1 * (abs(xt - c1) / r1) ** 3 + (1 - w1) * (abs(xt - c2) / r2) ** 3
-    return float(np.clip(rule, 0.01, 0.10))
+    u = float(np.clip(rule, 0.0, 0.10))
+    return int(round(u * 100))
 
 
 def _run_episode(env, actions):
