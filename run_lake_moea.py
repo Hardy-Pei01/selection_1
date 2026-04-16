@@ -1,0 +1,124 @@
+from ema_workbench import ema_logging
+from moea.params_config import multi_objs_lake_params, many_objs_lake_params
+from moea.method_config import multi_lake_params, moro_lake_params, moea_moro, moea_multi
+from moea.model_builder import (inter_lake_model, inter_robust_lake_model, dps_lake_model,
+                                dps_robust_lake_model)
+from collections import defaultdict
+import time
+
+activate_logging = True
+root_folder = f'./data_lake'
+
+run_policy = {
+    'intertemporal': True,
+    'dps': True
+}
+run_evo_method = {
+    'NSGAII': True,
+    'IBEA': True,
+    'MOEAD': True
+}
+run_scenario_method = {
+    'single': True,
+    'multi': False,
+    'moro': False
+}
+
+obj_uncertain = {
+    'multi_obj': True,
+    'many_obj': True
+}
+
+param_uncertain = {
+    'non_param': True,
+    'param': False
+}
+
+
+def nested_dict():
+    return defaultdict(nested_dict)
+
+
+nfe_settings = nested_dict()
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
+nfe_settings['dps']['single']['multi_obj']['non_param'] = 50000
+nfe_settings['dps']['single']['many_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
+nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
+nfe_settings['dps']['multi']['multi_obj']['param'] = 50000
+nfe_settings['dps']['multi']['many_obj']['param'] = 50000
+nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 50000
+nfe_settings['intertemporal']['moro']['many_obj']['param'] = 50000
+nfe_settings['dps']['moro']['multi_obj']['param'] = 50000
+nfe_settings['dps']['moro']['many_obj']['param'] = 50000
+
+model_settings = nested_dict()
+model_settings['intertemporal']['multi_obj']['non_param'] = (inter_lake_model, 'interMulti')
+model_settings['intertemporal']['many_obj']['non_param'] = (inter_lake_model, 'interMany')
+model_settings['intertemporal']['multi_obj']['param'] = (inter_robust_lake_model, 'interMultiRobust')
+model_settings['intertemporal']['many_obj']['param'] = (inter_robust_lake_model, 'interManyRobust')
+model_settings['dps']['multi_obj']['non_param'] = (dps_lake_model, 'dpsMulti')
+model_settings['dps']['many_obj']['non_param'] = (dps_lake_model, 'dpsMany')
+model_settings['dps']['multi_obj']['param'] = (dps_robust_lake_model, 'dpsMultiRobust')
+model_settings['dps']['many_obj']['param'] = (dps_robust_lake_model, 'dpsManyRobust')
+
+if __name__ == '__main__':
+    if activate_logging:
+        ema_logging.log_to_stderr(ema_logging.INFO)
+
+    for key_1, value_1 in run_policy.items():
+        if not value_1:
+            continue
+
+        for key_2, value_2 in run_evo_method.items():
+            if not value_2:
+                continue
+
+            for key_3, value_3 in run_scenario_method.items():
+                if not value_3:
+                    continue
+
+                for key_4, value_4 in obj_uncertain.items():
+                    if not value_4:
+                        continue
+
+                    for key_5, value_5 in param_uncertain.items():
+                        if not value_5:
+                            continue
+
+                        name = f'{key_1}_{key_2}_{key_3}_{key_4}_{key_5}'
+                        nfe = nfe_settings[key_1][key_3][key_4][key_5]
+                        print('--------------------------------------------------------------------')
+                        print(f"This experiment is {name}")
+                        print('--------------------------------------------------------------------')
+
+                        if key_5 == "non_param":
+                            robust = False
+                            scenarios = None
+                        elif key_5 == "param":
+                            robust = True
+                            scenarios = None
+                        else:
+                            raise Exception
+                        if key_4 == "multi_obj":
+                            model_params = multi_objs_lake_params
+                            many_obj = False
+                        elif key_4 == "many_obj":
+                            model_params = many_objs_lake_params
+                            many_obj = True
+                        else:
+                            raise Exception
+                        model_func, model_name = model_settings[key_1][key_4][key_5]
+                        model = model_func(model_params, model_name)
+                        start_time = time.time()
+                        if key_3 == "moro":
+                            method_params = moro_lake_params(name=name, nfe=nfe, algo=key_2,
+                                                             root_folder=root_folder, many_obj=many_obj,
+                                                             robust=robust, scenarios=scenarios)
+                            moea_moro(model, method_params, start_time, problem='lake')
+                        else:
+                            method_params = multi_lake_params(name=name, nfe=nfe, algo=key_2,
+                                                              root_folder=root_folder, many_obj=many_obj,
+                                                              robust=robust, scenarios=scenarios)
+                            moea_multi(model, method_params, start_time, problem='lake')

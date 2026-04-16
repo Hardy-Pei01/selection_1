@@ -1,4 +1,4 @@
-run_lake_moea.py
+test*
 data*
 __pycache__
 .idea
