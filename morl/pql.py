@@ -35,8 +35,63 @@ def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
     return weights
 
 
+def build_neighbourhoods(weights: np.ndarray, neighbourhood_size: int) -> list:
+    """Pre-compute the neighbourhood for each weight vector.
+
+    For each weight vector w_i, finds the `neighbourhood_size` closest
+    weight vectors by Euclidean distance (including w_i itself), exactly
+    as MOEA/D does.
+
+    Args:
+        weights: Array of shape (W, num_objectives).
+        neighbourhood_size: Number of neighbours per weight vector.
+
+    Returns:
+        List of length W, each element an array of neighbour indices.
+    """
+    neighbourhoods = []
+    for w in weights:
+        dists = np.linalg.norm(weights - w, axis=1)
+        neighbours = np.argsort(dists)[:neighbourhood_size]
+        neighbourhoods.append(neighbours)
+    return neighbourhoods
+
+
 class PQL(MOAgent):
-    
+    """Pareto Q-learning with three paradigm-specific scoring criteria.
+
+    Implements a controlled comparison of three multi-objective selection
+    paradigms on a shared Q-learning substrate:
+
+    - ``'pareto'``       — Pareto cardinality scoring (original PQL).
+    - ``'indicator'``    — Hypervolume indicator scoring (original PQL).
+    - ``'decomposition'``— Chebyshev scalarisation over a neighbourhood of
+                           weight vectors, analogous to MOEA/D selection.
+
+    The pareto and indicator variants share identical data structures and
+    Bellman updates: ``non_dominated[s][a]`` stores the full Pareto-pruned
+    set of Q-vectors at each state-action pair.
+
+    The decomposition variant uses a separate ``nd_decomp[s][a]`` structure
+    that stores the best Q-vector per weight vector (via Chebyshev
+    scalarisation) rather than the full non-dominated set. This gives the
+    Bellman update the same directional pressure as MOEA/D's
+    ``_update_solution``, ensuring the bootstrapped values actively guide
+    exploration toward uncovered subproblems. Without this, the decomposition
+    scorer would be applied at action selection only, while the update remains
+    Pareto-based — causing systematic underexploration of regions not yet
+    covered by the Pareto front.
+
+    All three variants share: avg_reward update, ε-greedy exploration,
+    episode structure, hyperparameters, and the get_local_pcs result
+    extraction (which always applies final Pareto pruning for a fair
+    comparison of the recovered front).
+
+    Paper: K. Van Moffaert and A. Nowé, "Multi-objective reinforcement
+    learning using sets of pareto dominating policies," JMLR, vol. 15,
+    no. 1, pp. 3483–3512, 2014.
+    """
+
     def __init__(
             self,
             env,
@@ -47,19 +102,37 @@ class PQL(MOAgent):
             final_epsilon=0.1,
             seed=None,
             num_weight_divisions=5,
+            neighbourhood_size=5,
     ):
+        """Initialise PQL.
 
+        Args:
+            env: The MO-Gymnasium environment.
+            ref_point: Reference point for hypervolume calculation.
+            gamma: Discount factor.
+            initial_epsilon: Initial ε for ε-greedy exploration.
+            epsilon_decay_steps: Steps over which ε decays linearly.
+            final_epsilon: Final ε after decay.
+            seed: Random seed.
+            num_weight_divisions: Number of divisions for weight vector
+                generation (used by the decomposition scorer). The total
+                number of weight vectors W = C(num_objectives +
+                num_weight_divisions - 1, num_weight_divisions).
+            neighbourhood_size: Number of neighbouring weight vectors
+                used by the decomposition scorer. Must be <= W.
+                Smaller values reduce per-step cost; typical value is 5–10.
+        """
         super().__init__(env, seed=seed)
+
         # Learning parameters
         self.gamma = gamma
         self.epsilon = initial_epsilon
         self.initial_epsilon = initial_epsilon
         self.epsilon_decay_steps = epsilon_decay_steps
         self.final_epsilon = final_epsilon
-
-        # Algorithm setup
         self.ref_point = ref_point
 
+        # Action space
         if isinstance(self.env.action_space, gym.spaces.Discrete):
             self.num_actions = self.env.action_space.n
         elif isinstance(self.env.action_space, gym.spaces.MultiDiscrete):
@@ -67,6 +140,7 @@ class PQL(MOAgent):
         else:
             raise Exception("PQL only supports (multi)discrete action spaces.")
 
+        # Observation space
         if isinstance(self.env.observation_space, gym.spaces.Discrete):
             self.env_shape = (self.env.observation_space.n,)
         elif isinstance(self.env.observation_space, gym.spaces.MultiDiscrete):
@@ -84,24 +158,74 @@ class PQL(MOAgent):
 
         self.num_states = np.prod(self.env_shape)
         self.num_objectives = self.env.unwrapped.reward_space.shape[0]
+
+        # Q-learning data structures for pareto and indicator variants.
+        # non_dominated[s][a]: full Pareto-pruned set of Q-vectors.
         self.counts = np.zeros((self.num_states, self.num_actions))
         self.non_dominated = [
-            [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)] for _ in range(self.num_states)
+            [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
+            for _ in range(self.num_states)
         ]
         self.avg_reward = np.zeros((self.num_states, self.num_actions, self.num_objectives))
 
-        # Decomposition setup
+        # Decomposition structures.
         self.weights = generate_weights(self.num_objectives, num_weight_divisions)
-        self.ideal_point = np.zeros(self.num_objectives)
+        self.neighbourhood_size = min(neighbourhood_size, len(self.weights))
+        self.neighbourhoods = build_neighbourhoods(self.weights, self.neighbourhood_size)
+        # Initialise to -inf so the first update always takes effect,
+        # regardless of whether rewards are negative (as in the fruit tree).
+        self.ideal_point = np.full(self.num_objectives, -np.inf)
 
-    def _update_ideal_point(self, state: int):
-        """Update the ideal point from the Q-sets of all actions at a state."""
-        for action in range(self.num_actions):
-            for vec in self.get_q_set(state, action):
-                self.ideal_point = np.maximum(self.ideal_point, np.array(vec))
+        # nd_decomp[s][a]: decomposition-specific bootstrap set.
+        # Stores the best Q-vector per weight vector (Chebyshev-optimal)
+        # rather than the full non-dominated set. Used only when
+        # action_eval='decomposition'. Initialised identically to
+        # non_dominated so the Q-set computation is consistent at the start.
+        self.nd_decomp = [
+            [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
+            for _ in range(self.num_states)
+        ]
+
+    # ------------------------------------------------------------------
+    # Ideal point
+    # ------------------------------------------------------------------
+
+    def _update_ideal_point_global(self, decomp: bool = False):
+        """Update the ideal point globally from Q-sets across all visited
+        state-action pairs.
+
+        Reads Q-sets rather than avg_reward directly because Q-sets
+        (avg_reward + gamma * bootstrap) reflect the true value estimate
+        including discounted future rewards. For episodic environments with
+        terminal rewards only (e.g. fruit tree), Q-sets equal avg_reward, so
+        there is no difference. For non-terminal environments (e.g. lake),
+        avg_reward captures only per-step reward and would systematically
+        underestimate the ideal point, reducing the discriminative power of
+        the Chebyshev scorer.
+
+        Args:
+            decomp: If True, read Q-sets from nd_decomp (decomposition
+                    variant). If False, read from non_dominated
+                    (pareto/indicator variants).
+
+        Called once per episode end so the cost is amortised over the
+        episode length rather than paid at every step.
+        """
+        for s in range(self.num_states):
+            if self.counts[s].sum() == 0:
+                continue
+            for a in range(self.num_actions):
+                if self.counts[s, a] == 0:
+                    continue
+                for vec in self.get_q_set(s, a, decomp=decomp):
+                    self.ideal_point = np.maximum(self.ideal_point, np.array(vec))
+
+    # ------------------------------------------------------------------
+    # Scoring functions — THE ONLY DIFFERENCE between the three variants
+    # ------------------------------------------------------------------
 
     def score_pareto_cardinality(self, state: int):
-
+        """Pareto-based scoring: count non-dominated contributions per action."""
         q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
         candidates = set().union(*q_sets)
         non_dominated = get_non_dominated(candidates)
@@ -115,24 +239,38 @@ class PQL(MOAgent):
         return scores
 
     def score_hypervolume(self, state: int):
-
+        """Indicator-based scoring: hypervolume contribution per action."""
         q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
         action_scores = [hypervolume(self.ref_point, list(q_set)) for q_set in q_sets]
         return action_scores
 
     def score_decomposition(self, state: int):
-        """Score actions using Chebyshev scalarisation over a set of weight vectors.
+        """Decomposition-based scoring using Chebyshev scalarisation.
 
-        For each weight vector, finds the best Q-vector across all actions
-        using the Chebyshev (min-max) scalarisation. The action that
-        contributes the best scalarised value for the most weight vectors
-        receives the highest score — analogous to how MOEA/D selects
-        solutions that best serve their assigned subproblems.
+        Selects a random subproblem i, then evaluates only the k weight
+        vectors in its neighbourhood B(i) — analogous to MOEA/D's
+        neighbourhood-restricted update. The action that wins the most
+        subproblems within the neighbourhood receives the highest score.
+
+        Uses nd_decomp (not non_dominated) as the bootstrap structure, so
+        the Q-sets reflect decomposition-directed exploration rather than
+        Pareto pruning.
+
+        Complexity: O(k × A × V) per call, where k = neighbourhood_size,
+        A = num_actions, V = average Q-set size. This is independent of
+        the total number of weight vectors W.
         """
-        q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
+        # Use decomp=True so Q-sets bootstrap from nd_decomp
+        q_sets = [self.get_q_set(state, action, decomp=True) for action in range(self.num_actions)]
         scores = np.zeros(self.num_actions)
 
-        for w in self.weights:
+        # Pick a random subproblem and restrict to its neighbourhood,
+        # exactly as MOEA/D selects a subproblem index at each iteration.
+        i = self.np_random.integers(len(self.weights))
+        neighbour_indices = self.neighbourhoods[i]
+
+        for idx in neighbour_indices:
+            w = self.weights[idx]
             best_action = None
             best_scalarised = np.inf
 
@@ -149,33 +287,93 @@ class PQL(MOAgent):
 
         return scores
 
-    def get_q_set(self, state: int, action: int):
+    # ------------------------------------------------------------------
+    # Shared Q-learning machinery
+    # ------------------------------------------------------------------
 
-        nd_array = np.array(list(self.non_dominated[state][action]))
+    def get_q_set(self, state: int, action: int, decomp: bool = False):
+        """Compute the Q-set for a (state, action) pair.
+
+        Args:
+            state: Flattened state index.
+            action: Action index.
+            decomp: If True, bootstrap from nd_decomp (decomposition variant).
+                    If False, bootstrap from non_dominated (pareto/indicator).
+        """
+        nd = self.nd_decomp[state][action] if decomp else self.non_dominated[state][action]
+        nd_array = np.array(list(nd))
         q_array = self.avg_reward[state, action] + self.gamma * nd_array
         return {tuple(vec) for vec in q_array}
 
     def select_action(self, state: int, score_func: Callable):
-
+        """ε-greedy action selection using the given scoring function."""
         if self.np_random.uniform(0, 1) < self.epsilon:
             return self.np_random.integers(self.num_actions)
         else:
             action_scores = score_func(state)
-            return self.np_random.choice(np.argwhere(action_scores == np.max(action_scores)).flatten())
+            return self.np_random.choice(
+                np.argwhere(action_scores == np.max(action_scores)).flatten()
+            )
 
     def calc_non_dominated(self, state: int):
-
+        """Return the Pareto non-dominated Q-vectors across all actions at a state.
+        Used by the pareto and indicator Bellman updates.
+        """
         candidates = set().union(*[self.get_q_set(state, action) for action in range(self.num_actions)])
-        non_dominated = get_non_dominated(candidates)
-        return non_dominated
+        return get_non_dominated(candidates)
+
+    def calc_decomp_best(self, state: int) -> set:
+        """Return the global best-per-weight Q-vector set at a state.
+
+        For each weight vector w, finds the Q-vector across all actions
+        that minimises the Chebyshev scalarisation. The resulting set —
+        one vector per weight, duplicates collapsed — is the decomposition
+        analog of calc_non_dominated: a single shared bootstrap for all
+        actions at this state.
+        """
+        q_sets = [self.get_q_set(state, action, decomp=True)
+                for action in range(self.num_actions)]
+        global_set = set()
+
+        for w in self.weights:
+            best_vec = None
+            best_scalarised = np.inf
+
+            for q_set in q_sets:
+                for vec in q_set:
+                    scalarised = np.max(w * (self.ideal_point - np.array(vec)))
+                    if scalarised < best_scalarised:
+                        best_scalarised = scalarised
+                        best_vec = vec
+
+            if best_vec is not None:
+                global_set.add(best_vec)
+
+        return global_set if global_set else {tuple(np.zeros(self.num_objectives))}
+
+    # ------------------------------------------------------------------
+    # Training loop
+    # ------------------------------------------------------------------
 
     def train(
             self,
-            total_timesteps,
-            action_eval="hypervolume",
-            log_every=1000,
+            total_timesteps: int,
+            action_eval: str = "indicator",
+            log_every: int = 1000,
     ):
+        """Train the agent.
 
+        Args:
+            total_timesteps: Total environment steps to train for.
+            action_eval: Scoring function to use. One of:
+                - ``'pareto'``        Pareto cardinality scoring.
+                - ``'indicator'``     Hypervolume indicator scoring.
+                - ``'decomposition'`` Neighbourhood Chebyshev scoring.
+            log_every: Log convergence metrics every this many steps.
+
+        Returns:
+            Tuple of (pareto_coverage_set, convergence_log).
+        """
         if action_eval == "indicator":
             score_func = self.score_hypervolume
         elif action_eval == "pareto":
@@ -183,8 +381,12 @@ class PQL(MOAgent):
         elif action_eval == "decomposition":
             score_func = self.score_decomposition
         else:
-            raise Exception(f"Unknown action_eval: {action_eval}. "
-                            f"Choose from 'indicator', 'pareto', 'decomposition'.")
+            raise Exception(
+                f"Unknown action_eval: '{action_eval}'. "
+                f"Choose from 'pareto', 'indicator', 'decomposition'."
+            )
+
+        is_decomp = (action_eval == "decomposition")
 
         convergence_log = []
         next_log_step = log_every
@@ -196,9 +398,6 @@ class PQL(MOAgent):
             truncated = False
 
             while not (terminated or truncated) and self.global_step < total_timesteps:
-                # Update ideal point before selection so decomposition scorer is current
-                self._update_ideal_point(state)
-
                 action = self.select_action(state, score_func)
                 if isinstance(self.env.action_space, gym.spaces.MultiDiscrete):
                     action_nd = np.unravel_index(action, self.env.action_space.nvec)
@@ -208,23 +407,35 @@ class PQL(MOAgent):
                 self.global_step += 1
                 next_state = int(np.ravel_multi_index(next_state, self.env_shape))
 
+                # avg_reward update — identical for all three variants
                 self.counts[state, action] += 1
-                self.non_dominated[state][action] = self.calc_non_dominated(next_state)
-                self.avg_reward[state, action] += (reward - self.avg_reward[state, action]) / self.counts[state, action]
+
+                # Bellman update — paradigm-specific
+                if is_decomp:
+                    self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
+                else:
+                    self.non_dominated[state][action] = self.calc_non_dominated(next_state)
+                self.avg_reward[state, action] += (
+                        (reward - self.avg_reward[state, action]) / self.counts[state, action]
+                )
 
                 state = next_state
 
-                # Periodically log convergence metrics
+                # Convergence logging
                 if self.global_step >= next_log_step:
-                    pcs = self.get_local_pcs(state=0)
+                    pcs = self.get_local_pcs(state=0, decomp=is_decomp)
                     hv = hypervolume(self.ref_point, list(pcs)) if pcs else 0.0
                     convergence_log.append({
-                        'timestep': self.global_step,
-                        'hypervolume': hv,
-                        'pcs_size': len(pcs),
-                        'epsilon': self.epsilon,
+                        "timestep": self.global_step,
+                        "hypervolume": hv,
+                        "pcs_size": len(pcs),
+                        "epsilon": self.epsilon,
                     })
                     next_log_step += log_every
+
+            # Update the ideal point globally from all visited (s, a) pairs.
+            # Done once per episode rather than per step to amortise cost.
+            self._update_ideal_point_global(decomp=is_decomp)
 
             self.epsilon = linearly_decaying_value(
                 self.initial_epsilon,
@@ -234,10 +445,22 @@ class PQL(MOAgent):
                 self.final_epsilon,
             )
 
-        return self.get_local_pcs(state=0), convergence_log
+        return self.get_local_pcs(state=0, decomp=is_decomp), convergence_log
 
-    def get_local_pcs(self, state: int = 0):
+    # ------------------------------------------------------------------
+    # Result extraction
+    # ------------------------------------------------------------------
 
-        q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
+    def get_local_pcs(self, state: int = 0, decomp: bool = False):
+        """Return the Pareto coverage set at the given state.
+
+        Always applies final Pareto pruning regardless of variant, so the
+        returned set is directly comparable across all three paradigms.
+
+        Args:
+            state: Flattened state index.
+            decomp: If True, build candidates from nd_decomp Q-sets.
+        """
+        q_sets = [self.get_q_set(state, action, decomp=decomp) for action in range(self.num_actions)]
         candidates = set().union(*q_sets)
         return get_non_dominated(candidates)

@@ -15,7 +15,7 @@ def _run_episode(env, actions):
     total_rewards = np.zeros(env.num_obj, dtype=np.float32)
     for u1, u2 in actions:
         action = np.array([u1, u2], dtype=np.float32)
-        _, rewards, _ = env.step(action)
+        _, rewards, _, _, _ = env.step(action)
         total_rewards += np.array(rewards, dtype=np.float32)
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(env.num_obj)}
 
