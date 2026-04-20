@@ -1,9 +1,11 @@
 import numpy as np
-from gymnasium import spaces
+import gymnasium as gym
 from scipy.optimize import brentq
 
+LAKE_BINS = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 4.0, 12.0])
 
-class TwoLakeEnv:
+
+class TwoLakeEnv(gym.Env):
 
     def __init__(
             self,
@@ -70,17 +72,18 @@ class TwoLakeEnv:
 
         # --- Spaces ---
         # Actions: emission level for each lake, held for years_per_action years
-        self.action_space = spaces.MultiDiscrete([11, 11])
+        self.action_space = gym.spaces.MultiDiscrete([11, 11])
 
         # Observations: [P_lake1, P_lake2]
-        self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0], dtype=np.float32),
-            high=np.array([10.0, 10.0], dtype=np.float32),
-            dtype=np.float32,
+        n_bins = len(LAKE_BINS) - 1
+        self.observation_space = gym.spaces.Box(
+            low=np.array([0, 0], dtype=np.int32),
+            high=np.array([n_bins - 1, n_bins - 1], dtype=np.int32),
+            dtype=np.int32,
         )
 
         # Reward space (6 objectives) — informational, used by MORL libraries
-        self.reward_space = spaces.Box(
+        self.reward_space = gym.spaces.Box(
             low=np.full(num_obj, -np.inf, dtype=np.float32),
             high=np.full(num_obj, np.inf, dtype=np.float32),
             dtype=np.float32,
@@ -99,14 +102,15 @@ class TwoLakeEnv:
     # Gymnasium API
     # ------------------------------------------------------------------
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         self._X1 = 0.0
         self._X2 = 0.1
         self._gym_step = 0
         self._prev_u1 = np.nan
         self._prev_u2 = np.nan
 
-        return self._obs()
+        return self._obs(), {}
 
     def step(self, action):
         u1 = action[0] / 100
@@ -155,14 +159,18 @@ class TwoLakeEnv:
         if self.num_obj == 2:
             rewards = rewards[[0, 2]]  # -utility1, -reliability1
 
-        return self._obs(), rewards, terminated
+        return self._obs(), rewards, terminated, False, {}
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _obs(self) -> np.ndarray:
-        return np.array([self._X1, self._X2], dtype=np.float32)
+        """Discretized observation — bins (X1, X2) into LAKE_BINS for tabular MORL."""
+        n_bins = len(LAKE_BINS) - 1
+        x1_bin = int(np.clip(np.digitize(self._X1, LAKE_BINS) - 1, 0, n_bins - 1))
+        x2_bin = int(np.clip(np.digitize(self._X2, LAKE_BINS) - 1, 0, n_bins - 1))
+        return np.array([x1_bin, x2_bin], dtype=np.int32)
 
     def _simulate(self, u1: float, u2: float):
         """

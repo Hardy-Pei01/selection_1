@@ -27,9 +27,9 @@ class base_tree_params(base_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
         super().__init__(name, nfe, algo, root_folder, robust, scenarios)
         if many_obj:
-            self.epsilons = [0.1] * tree_many_obj
+            self.epsilons = [0.01] * tree_many_obj
         else:
-            self.epsilons = [0.1] * tree_multi_obj
+            self.epsilons = [0.01] * tree_multi_obj
 
 
 class multi_tree_params(base_tree_params):
@@ -53,9 +53,9 @@ class base_lake_params(base_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
         super().__init__(name, nfe, algo, root_folder, robust, scenarios)
         if many_obj:
-            self.epsilons = [0.1] * lake_many_obj   # 6 objectives
+            self.epsilons = [0.1, 0.1, 0.01, 0.01, 0.01, 0.01]   # 6 objectives
         else:
-            self.epsilons = [0.1] * lake_multi_obj  # 2 objectives
+            self.epsilons = [0.1, 0.01]  # 2 objectives
 
 
 class multi_lake_params(base_lake_params):

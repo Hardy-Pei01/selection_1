@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pymoo.indicators.hv import HV
 
-depth = 'lake_robust_1'
+depth = 'lake_1'
 data_dir = f"./lake_data/data_{depth}"
 
 # ref_point_2 = np.array([-10]*2)
