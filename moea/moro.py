@@ -31,7 +31,7 @@ def count_robust(robust_goal, robust_threshold, outcomes):
         return np.sum(outcomes >= robust_threshold) / outcomes.shape[0]
 
 
-LAKE_THRESHOLDS_6 = [-0.75, -0.75, -0.9, -0.9, 0.2, 0.2]
+LAKE_THRESHOLDS_6 = [-0.75, -0.75, -0.9, -0.9, 0.5, 0.5]
 LAKE_THRESHOLDS_2 = [-0.75, -0.9]
 
 

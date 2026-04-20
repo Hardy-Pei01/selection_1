@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from pymoo.indicators.hv import HV
 
-depth = 'lake'
-data_dir = f"./data_{depth}"
+depth = 'lake_robust_1'
+data_dir = f"./lake_data/data_{depth}"
 
 # ref_point_2 = np.array([-10]*2)
 # ref_point_6 = np.array([-10]*6)
@@ -67,9 +67,8 @@ ax.spines["right"].set_visible(False)
 ax.grid(axis="y", linestyle="--", alpha=0.4)
 
 plt.tight_layout()
-# plt.savefig("multi_uncertain.png", dpi=150, bbox_inches="tight")
+plt.savefig(f"./lake_figures/performance_{depth}.png", dpi=150, bbox_inches="tight")
 plt.show()
-
 
 # A line of each algorithm performance with the depth increasing (2-objective and 8-objective)
 # A line of ratio with the depth increasing

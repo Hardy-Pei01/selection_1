@@ -2,8 +2,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-depth = 'lake'
-data_dir = f"./data_{depth}"
+depth = 'lake_robust_1'
+data_dir = f"./lake_data/data_{depth}"
 
 for folder_name in sorted(os.listdir(data_dir)):
     folder_path = os.path.join(data_dir, folder_name)
@@ -24,3 +24,4 @@ plt.xlabel("NFE")
 plt.ylabel("Epsilon Progress")
 plt.legend()
 plt.show()
+plt.savefig(f"./lake_figures/convergence_{depth}.png", dpi=150, bbox_inches="tight")

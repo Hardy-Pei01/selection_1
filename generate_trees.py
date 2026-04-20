@@ -36,6 +36,9 @@ def main(depth, reward_dim, seed):
 
 
 if __name__ == "__main__":
-    depth = 8
+    depth = 14
     main(depth=depth, reward_dim=2, seed=1)
+    main(depth=depth, reward_dim=5, seed=1)
     main(depth=depth, reward_dim=8, seed=1)
+    main(depth=depth, reward_dim=11, seed=1)
+    main(depth=depth, reward_dim=14, seed=1)

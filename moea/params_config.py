@@ -1,10 +1,12 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 10
+tree_depth = 14
 tree_multi_obj = 2
-tree_many_obj = 8
+tree_many_obj = 14
 lake_multi_obj = 2
 lake_many_obj = 6
+total_years = 100
+years_per_action = 1
 
 multi_objs_tree_params = {
     'depth': tree_depth,
@@ -72,8 +74,8 @@ multi_objs_lake_params = {
         Constant("num_obj", lake_multi_obj),
         Constant("alpha", 0.4),
         Constant("delta", 0.98),
-        Constant("total_years", 100),
-        Constant("years_per_action", 10),
+        Constant("total_years", total_years),
+        Constant("years_per_action", years_per_action),
     ]
 }
 
@@ -94,8 +96,8 @@ many_objs_lake_params = {
         Constant("num_obj", lake_many_obj),
         Constant("alpha", 0.4),
         Constant("delta", 0.98),
-        Constant("total_years", 100),
-        Constant("years_per_action", 10),
+        Constant("total_years", total_years),
+        Constant("years_per_action", years_per_action),
     ]
 }
 

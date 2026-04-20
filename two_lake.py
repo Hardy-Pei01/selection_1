@@ -21,7 +21,7 @@ class TwoLakeEnv:
             delta=0.98,
             # Time structure
             total_years=100,
-            years_per_action=10,
+            years_per_action=5,
             # Seed for natural inflow generation — fixed for the lifetime of the env,
             # independent of the episode seed passed to reset()
             inflow_seed1=0,

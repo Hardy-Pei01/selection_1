@@ -7,7 +7,7 @@ from collections import defaultdict
 import time
 
 activate_logging = True
-root_folder = f'./data_lake'
+root_folder = f'./data_lake_original'
 
 run_policy = {
     'intertemporal': True,
@@ -15,8 +15,8 @@ run_policy = {
 }
 run_evo_method = {
     'NSGAII': True,
-    'IBEA': True,
-    'MOEAD': True
+    'IBEA': False,
+    'MOEAD': False
 }
 run_scenario_method = {
     'single': True,
@@ -40,18 +40,18 @@ def nested_dict():
 
 
 nfe_settings = nested_dict()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
-nfe_settings['dps']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['dps']['single']['many_obj']['non_param'] = 50000
-nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
-nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
-nfe_settings['dps']['multi']['multi_obj']['param'] = 50000
-nfe_settings['dps']['multi']['many_obj']['param'] = 50000
-nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 50000
-nfe_settings['intertemporal']['moro']['many_obj']['param'] = 50000
-nfe_settings['dps']['moro']['multi_obj']['param'] = 50000
-nfe_settings['dps']['moro']['many_obj']['param'] = 50000
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 100000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 100000
+nfe_settings['dps']['single']['multi_obj']['non_param'] = 100000
+nfe_settings['dps']['single']['many_obj']['non_param'] = 100000
+nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 100000
+nfe_settings['intertemporal']['multi']['many_obj']['param'] = 100000
+nfe_settings['dps']['multi']['multi_obj']['param'] = 100000
+nfe_settings['dps']['multi']['many_obj']['param'] = 100000
+nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 100000
+nfe_settings['intertemporal']['moro']['many_obj']['param'] = 100000
+nfe_settings['dps']['moro']['multi_obj']['param'] = 100000
+nfe_settings['dps']['moro']['many_obj']['param'] = 100000
 
 model_settings = nested_dict()
 model_settings['intertemporal']['multi_obj']['non_param'] = (inter_lake_model, 'interMulti')

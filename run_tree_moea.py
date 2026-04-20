@@ -21,19 +21,19 @@ run_evo_method = {
     'MOEAD': True
 }
 run_scenario_method = {
-    'single': False,
+    'single': True,
     'multi': False,
-    'moro': True
+    'moro': False
 }
 
 obj_uncertain = {
-    'multi_obj': True,
+    'multi_obj': False,
     'many_obj': True
 }
 
 param_uncertain = {
-    'non_param': False,
-    'param': True
+    'non_param': True,
+    'param': False
 }
 
 
@@ -42,10 +42,10 @@ def tree():
 
 
 nfe_settings = tree()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 50000
-nfe_settings['table']['single']['multi_obj']['non_param'] = 50000
-nfe_settings['table']['single']['many_obj']['non_param'] = 50000
+nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 100000
+nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 100000
+nfe_settings['table']['single']['multi_obj']['non_param'] = 100000
+nfe_settings['table']['single']['many_obj']['non_param'] = 100000
 nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 50000
 nfe_settings['intertemporal']['multi']['many_obj']['param'] = 50000
 nfe_settings['table']['multi']['multi_obj']['param'] = 50000
