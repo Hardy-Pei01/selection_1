@@ -14,7 +14,7 @@ def fruit_tree_inter(depth, num_obj, csv_path, observe, **kwargs):
         if terminal:
             break
 
-    return {f'o{i + 1}': reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
@@ -34,7 +34,7 @@ def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
         if terminal:
             break
 
-    return {f'o{i+1}': reward[i] for i in range(num_obj)}
+    return {f'o{i+1}': -reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_inter_robust(depth, num_obj, csv_path, observe, slip_prob=0.0, **kwargs):
@@ -49,7 +49,7 @@ def fruit_tree_inter_robust(depth, num_obj, csv_path, observe, slip_prob=0.0, **
         if terminal:
             break
 
-    return {f'o{i + 1}': reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_table_robust(depth, num_obj, csv_path, observe, slip_prob=0.0, **kwargs):
@@ -70,5 +70,5 @@ def fruit_tree_table_robust(depth, num_obj, csv_path, observe, slip_prob=0.0, **
         if terminal:
             break
 
-    return {f'o{i+1}': reward[i] for i in range(num_obj)}
+    return {f'o{i+1}': -reward[i] for i in range(num_obj)}
 

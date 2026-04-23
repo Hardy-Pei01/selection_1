@@ -67,7 +67,7 @@ def run_morl_single(
     agent = PQL(
         env=env,
         ref_point=ref_point,
-        gamma=0.8,
+        gamma=1.0,
         initial_epsilon=1.0,
         epsilon_decay_steps=int(timesteps * 0.8),
         final_epsilon=0.05,

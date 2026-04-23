@@ -14,10 +14,10 @@ out_dir = "./lake_figures"
 # Reference points — must be strictly worse than all achievable objectives.
 # Fruit tree: objectives in [-1, 0]
 REF_POINTS = {
-    2: np.full(2, -11.0),  # fruit tree 2-obj
-    6: np.full(6, -11.0),  # lake 6-obj
-    8: np.full(8, -11.0),  # fruit tree 8-obj
-    14: np.full(14, -11.0),  # fruit tree 14-obj
+    2: np.full(2, -1.0),  # fruit tree 2-obj
+    6: np.full(6, -1.0),  # lake 6-obj
+    8: np.full(8, -1.0),  # fruit tree 8-obj
+    14: np.full(14, -1.0),  # fruit tree 14-obj
 }
 
 
@@ -94,7 +94,7 @@ for folder_name in sorted(os.listdir(data_dir)):
     if n_obj == 0 or len(objectives) == 0:
         continue
 
-    ref_point = np.full(n_obj, -11.0)
+    ref_point = np.full(n_obj, -1.0)
     hv_val = float(HV(ref_point=ref_point)(objectives))
 
     records.append({

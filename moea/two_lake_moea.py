@@ -16,7 +16,7 @@ def _run_episode(env, actions):
     for u1, u2 in actions:
         action = np.array([u1, u2], dtype=np.float32)
         _, rewards, _, _, _ = env.step(action)
-        total_rewards += np.array(rewards, dtype=np.float32)
+        total_rewards -= np.array(rewards, dtype=np.float32)
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(env.num_obj)}
 
 
@@ -56,7 +56,7 @@ def two_lake_dps(num_obj, alpha, delta, total_years, years_per_action, **kwargs)
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
         _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))
-        total_rewards += np.array(rewards, dtype=np.float32)
+        total_rewards -= np.array(rewards, dtype=np.float32)
 
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(num_obj)}
 
@@ -106,6 +106,6 @@ def two_lake_dps_robust(num_obj, alpha, delta, total_years, years_per_action,
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
         _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))
-        total_rewards += np.array(rewards, dtype=np.float32)
+        total_rewards -= np.array(rewards, dtype=np.float32)
 
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(num_obj)}

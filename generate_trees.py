@@ -11,8 +11,8 @@ TREE_SEED = 42  # Pareto-leaf hypersphere draw
 DOMINATE_SEED = [7, 29]  # dominated-leaf selection and offset sampling
 
 # ── Benchmark hyperparameters ─────────────────────────────────────────────────
-OFFSET_LOW = 0.5  # minimum per-objective offset added to parent leaves
-OFFSET_HIGH = 4.0  # maximum per-objective offset added to parent leaves
+OFFSET_LOW = 0.5  # minimum per-objective offset subtracted from parent leaves
+OFFSET_HIGH = 4.0  # maximum per-objective offset subtracted from parent leaves
 
 BASE_DOMINATED_FRACTION = 0.25  # centre of the distribution
 DOMINATED_FRACTION_NOISE = 0.1  # std — keeps fraction in ~[0.10, 0.40]
@@ -45,21 +45,20 @@ def generate_leaf_rewards(
 
     # ── Stage 1: Pareto-optimal leaves ───────────────────────────────────────
     # Sample directions uniformly on the positive unit hypersphere, then scale
-    # to radius 10 and negate.  Every good leaf has norm = 10 and values in
-    # [-10, 0].  No leaf dominates another (distinct points on the same sphere
-    # cannot be uniformly smaller under minimisation — proof: if A[k] <= B[k]
-    # for all k then norm(A) <= norm(B); equality forces A = B), giving ~100%
-    # non-dominated within this group.
+    # to radius 10.  Every good leaf has norm = 10 and values in (0, 10].
+    # No leaf dominates another under maximisation: if A[k] >= B[k] for all k
+    # then norm(A) >= norm(B); equality forces A = B, so distinct sphere points
+    # are mutually non-dominated.
     raw = rng_tree.standard_normal((n_good, reward_dim))
     raw = np.abs(raw) / np.linalg.norm(raw, axis=1, keepdims=True)
-    good_rewards = raw * (-10.0)  # values in [-10, 0], norm = 10
+    good_rewards = raw * 10.0  # values in (0, 10], norm = 10
 
     # ── Stage 2: dominated leaves ─────────────────────────────────────────────
-    # Each dominated leaf = (random Pareto parent) PLUS (positive per-obj offset).
-    # Adding a strictly positive offset guarantees:
-    #   dominated_leaf[j] > parent[j]  for every objective j
-    # so the parent is smaller on every objective → parent dominates the child
-    # under minimisation.
+    # Each dominated leaf = (random Pareto parent) MINUS (positive per-obj offset).
+    # Subtracting a strictly positive offset guarantees:
+    #   dominated_leaf[j] < parent[j]  for every objective j
+    # so the parent is larger on every objective → parent dominates the child
+    # under maximisation.
     #
     # Using a per-objective (not scalar) offset creates asymmetric degradation:
     # a dominated leaf can still beat Pareto leaves on individual objectives,
@@ -69,7 +68,7 @@ def generate_leaf_rewards(
     offsets = rng_dom.uniform(  # all > 0
         offset_low, offset_high,
         size=(n_dominated, reward_dim))
-    dominated_rewards = np.clip(parents + offsets, -10.0, 0.0)
+    dominated_rewards = np.clip(parents - offsets, 0.0, 10.0)
 
     # ── Stage 3: combine ──────────────────────────────────────────────────────
     all_rewards = np.concatenate([good_rewards, dominated_rewards], axis=0)
@@ -81,12 +80,12 @@ def generate_leaf_rewards(
     # ── Stage 4: verify ground-truth Pareto front ─────────────────────────────
     # A dominated leaf whose offset lands very close to zero on some objective
     # may end up non-dominated by accident (if its parent happened to be near
-    # the boundary).  Running is_nondominated over the full set gives the exact
-    # ground truth regardless of construction intent.
-    nd_mask = is_nondominated(all_rewards)
+    # the boundary).  is_nondominated uses minimisation convention, so negate
+    # rewards to convert to the maximisation problem used here.
+    nd_mask = is_nondominated(-all_rewards)
 
-    # ── Sort by objectives (readability) ──────────────────────────────────────
-    sort_keys = tuple(all_rewards[:, i] for i in range(reward_dim - 1, -1, -1))
+    # ── Sort by objectives descending (best first for readability) ────────────
+    sort_keys = tuple(-all_rewards[:, i] for i in range(reward_dim - 1, -1, -1))
     sort_order = np.lexsort(sort_keys)
     all_rewards = all_rewards[sort_order]
     nd_mask = nd_mask[sort_order]
@@ -137,6 +136,6 @@ def main(
 
 
 if __name__ == "__main__":
-    depth = 8
+    depth = 14
     main(depth=depth, reward_dim=2, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[0])
     main(depth=depth, reward_dim=6, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[1])

@@ -60,8 +60,8 @@ obj_uncertain = {
 
 # Parametric uncertainty (slip_prob)
 param_uncertain = {
-    'non_param': True,  # fixed slip_prob=0.0  — only valid with 'single'
-    'param': True,  # uncertain slip_prob  — only valid with 'multi'/'moro'
+    'deterministic': True,  # fixed slip_prob=0.0  — only valid with 'single'
+    'robust': False,  # uncertain slip_prob  — only valid with 'multi'/'moro'
 }
 
 
@@ -72,12 +72,12 @@ def _nested():
 
 
 timestep_settings = _nested()
-timestep_settings['single']['multi_obj']['non_param'] = 100_000
-timestep_settings['single']['many_obj']['non_param'] = 100_000
-timestep_settings['multi']['multi_obj']['param'] = 50_000
-timestep_settings['multi']['many_obj']['param'] = 50_000
-timestep_settings['moro']['multi_obj']['param'] = 50_000
-timestep_settings['moro']['many_obj']['param'] = 50_000
+timestep_settings['single']['multi_obj']['deterministic'] = 50000
+timestep_settings['single']['many_obj']['deterministic'] = 50000
+timestep_settings['multi']['multi_obj']['robust'] = 50000
+timestep_settings['multi']['many_obj']['robust'] = 50000
+timestep_settings['moro']['multi_obj']['robust'] = 50000
+timestep_settings['moro']['many_obj']['robust'] = 50000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 # Objective-count-dependent settings (no moea equivalent — PQL-specific).
@@ -89,8 +89,8 @@ neighbourhood_size = 10
 
 # ── Objective metadata ────────────────────────────────────────────────────────
 ref_points = {
-    'multi_obj': np.full(tree_multi_obj, -10.0),
-    'many_obj': np.full(tree_many_obj, -10.0),
+    'multi_obj': np.full(tree_multi_obj, -1.0),  # was -10.0
+    'many_obj': np.full(tree_many_obj,  -1.0),  # was -10.0
 }
 csv_paths = {
     'multi_obj': f'./fruits/depth{tree_depth}_dim{tree_multi_obj}.csv',
@@ -122,9 +122,9 @@ if __name__ == '__main__':
 
                     # Enforce valid (scenario_method, uncertainty) combinations —
                     # mirrors the same guards in run_tree_moea.py.
-                    if key_3 == 'single' and key_param == 'param':
+                    if key_3 == 'single' and key_param == 'robust':
                         continue  # single only makes sense without param uncertainty
-                    if key_3 in ('multi', 'moro') and key_param == 'non_param':
+                    if key_3 in ('multi', 'moro') and key_param == 'deterministic':
                         continue  # multi/moro require param uncertainty
 
                     name = f'{key_scoring}_{key_3}_{key_obj}_{key_param}'
@@ -139,7 +139,7 @@ if __name__ == '__main__':
                     print('--------------------------------------------------------------------')
 
                     # robust=False for 'single' (non_param), True for 'multi'/'moro' (param)
-                    robust = (key_param == 'param')
+                    robust = (key_param == 'robust')
 
                     start_time = time.time()
 

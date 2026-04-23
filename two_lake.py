@@ -141,12 +141,12 @@ class TwoLakeEnv(gym.Env):
         # Reward vector — sign convention: positive = better for the agent
         # RL maximises rewards, so minimisation objectives are negated
         rewards = np.array([
-            -utility1,  # minimise (negate utility lake 1)
-            -utility2,  # minimise (negate utility lake 2)
-            -reliability1,  # minimise (negate reliability lake 1)
-            -reliability2,  # minimise (negate reliability lake 2)
-            inertia1,  # minimise (large changes = bad, already positive)
-            inertia2,  # minimise (large changes = bad, already positive)
+            utility1,  # minimise (negate utility lake 1)
+            utility2,  # minimise (negate utility lake 2)
+            reliability1,  # minimise (negate reliability lake 1)
+            reliability2,  # minimise (negate reliability lake 2)
+            -inertia1,  # minimise (large changes = bad, already positive)
+            -inertia2,  # minimise (large changes = bad, already positive)
         ], dtype=np.float32)
 
         # --- Advance step counter ---
