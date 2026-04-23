@@ -1,6 +1,5 @@
-from moea.params_config import (default_tree_scenario, default_lake_scenario,
-                                 tree_multi_obj, tree_many_obj,
-                                 lake_multi_obj, lake_many_obj)
+from params_config import (default_tree_scenario, default_lake_scenario,
+                           tree_multi_obj, tree_many_obj)
 import moea.multi as multi
 import moea.moro as moro
 from ema_workbench import (Scenario)

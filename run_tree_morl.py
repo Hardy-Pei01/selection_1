@@ -5,7 +5,7 @@ from collections import defaultdict
 from fruit_tree import FruitTreeEnv
 from morl.moro import run_morl, run_moro
 from morl.multi import run_multi
-from moea.params_config import tree_depth, tree_multi_obj, tree_many_obj
+from params_config import tree_depth, tree_multi_obj, tree_many_obj
 
 root_folder = f'./data_morl_{tree_depth}'
 

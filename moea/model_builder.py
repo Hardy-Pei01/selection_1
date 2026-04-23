@@ -1,7 +1,7 @@
-from ema_workbench import (Model, IntegerParameter, RealParameter, Constant)
+from ema_workbench import (Model, IntegerParameter, RealParameter)
 from moea.fruit_tree_moea import fruit_tree_inter, fruit_tree_table, fruit_tree_inter_robust, fruit_tree_table_robust
 from moea.two_lake_moea import two_lake_inter, two_lake_inter_robust, two_lake_dps, two_lake_dps_robust
-from moea.params_config import non_observable_constants_multi, non_observable_constants_many
+from params_config import non_observable_constants_multi, non_observable_constants_many
 
 
 def inter_base_tree_model(intertemporal, params):

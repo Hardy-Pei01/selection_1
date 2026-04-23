@@ -1,5 +1,5 @@
 from ema_workbench import ema_logging
-from moea.params_config import multi_objs_lake_params, many_objs_lake_params
+from params_config import multi_objs_lake_params, many_objs_lake_params
 from moea.method_config import multi_lake_params, moro_lake_params, moea_moro, moea_multi
 from moea.model_builder import (inter_lake_model, inter_robust_lake_model, dps_lake_model,
                                 dps_robust_lake_model)

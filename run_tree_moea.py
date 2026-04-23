@@ -1,9 +1,7 @@
 from ema_workbench import ema_logging
-from moea.params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_many_obj
+from params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_many_obj
 from moea.method_config import multi_tree_params, moro_tree_params, moea_moro, moea_multi
 from moea.model_builder import (inter_tree_model, inter_robust_tree_model, table_tree_model,
-                                table_multi_objs_partially_observable_tree_model,
-                                table_many_objs_partially_observable_tree_model,
                                 table_robust_tree_model)
 from collections import defaultdict
 import time
