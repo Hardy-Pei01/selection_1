@@ -5,7 +5,7 @@ from collections import defaultdict
 from fruit_tree import FruitTreeEnv
 from morl.moro import run_morl, run_moro
 from morl.multi import run_multi
-from moea.params_config import tree_depth
+from moea.params_config import tree_depth, tree_multi_obj, tree_many_obj
 
 root_folder = f'./data_morl_{tree_depth}'
 
@@ -32,18 +32,18 @@ param_uncertain = {
 }
 
 ref_points = {
-    'multi_obj': np.full(2, -11.0),
-    'many_obj': np.full(8, -11.0),
+    'multi_obj': np.full(tree_multi_obj, -10.0),
+    'many_obj': np.full(tree_many_obj, -10.0),
 }
 
 csv_paths = {
-    'multi_obj': f'./fruits/depth{tree_depth}_dim2.csv',
-    'many_obj': f'./fruits/depth{tree_depth}_dim8.csv',
+    'multi_obj': f'./fruits/depth{tree_depth}_dim{tree_multi_obj}.csv',
+    'many_obj': f'./fruits/depth{tree_depth}_dim{tree_many_obj}.csv',
 }
 
 num_objectives = {
-    'multi_obj': 2,
-    'many_obj': 8,
+    'multi_obj': tree_multi_obj,
+    'many_obj': tree_many_obj,
 }
 
 
@@ -52,16 +52,16 @@ def nested_dict():
 
 
 timestep_settings = nested_dict()
-timestep_settings['single']['multi_obj']['non_param'] = 500000
-timestep_settings['single']['many_obj']['non_param'] = 1000000
-timestep_settings['multi']['multi_obj']['param'] = 500000
-timestep_settings['multi']['many_obj']['param'] = 1000000
-timestep_settings['moro']['multi_obj']['param'] = 1000000
-timestep_settings['moro']['many_obj']['param'] = 2000000
+timestep_settings['single']['multi_obj']['non_param'] = 100000
+timestep_settings['single']['many_obj']['non_param'] = 100000
+timestep_settings['multi']['multi_obj']['param'] = 50000
+timestep_settings['multi']['many_obj']['param'] = 50000
+timestep_settings['moro']['multi_obj']['param'] = 50000
+timestep_settings['moro']['many_obj']['param'] = 50000
 
 num_weight_divisions = {
     'multi_obj': 149,
-    'many_obj': 3,
+    'many_obj': 4,
 }
 neighbourhood_size = 10
 

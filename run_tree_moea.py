@@ -12,18 +12,18 @@ activate_logging = True
 root_folder = f'./data_{tree_depth}_{tree_many_obj}'
 
 run_policy = {
-    'intertemporal': True,
+    'intertemporal': False,
     'table': True
 }
 run_evo_method = {
-    'NSGAII': True,
-    'IBEA': True,
+    'NSGAII': False,
+    'IBEA': False,
     'MOEAD': True
 }
 run_scenario_method = {
-    'single': True,
+    'single': False,
     'multi': False,
-    'moro': False
+    'moro': True
 }
 
 obj_uncertain = {
@@ -32,8 +32,8 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'non_param': True,
-    'param': False
+    'non_param': False,
+    'param': True
 }
 
 

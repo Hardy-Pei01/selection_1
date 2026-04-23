@@ -64,3 +64,6 @@ class FruitTreeEnv(gym.Env):
 
         return self.current_state.copy(), reward, self.terminal, False, {}
 
+    @property
+    def unwrapped(self):
+        return self

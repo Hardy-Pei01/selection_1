@@ -3,6 +3,7 @@
 import numbers
 from itertools import product
 from typing import Callable
+from collections import defaultdict
 
 import gymnasium as gym
 import numpy as np
@@ -161,12 +162,17 @@ class PQL(MOAgent):
 
         # Q-learning data structures for pareto and indicator variants.
         # non_dominated[s][a]: full Pareto-pruned set of Q-vectors.
-        self.counts = np.zeros((self.num_states, self.num_actions))
-        self.non_dominated = [
-            [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
-            for _ in range(self.num_states)
-        ]
-        self.avg_reward = np.zeros((self.num_states, self.num_actions, self.num_objectives))
+        self.counts = defaultdict(lambda: np.zeros(self.num_actions))
+
+        self.non_dominated = defaultdict(
+            lambda: [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
+        )
+        self.avg_reward = defaultdict(
+            lambda: np.zeros((self.num_actions, self.num_objectives))
+        )
+        self.nd_decomp = defaultdict(
+            lambda: [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
+        )
 
         # Decomposition structures.
         self.weights = generate_weights(self.num_objectives, num_weight_divisions)
@@ -175,16 +181,8 @@ class PQL(MOAgent):
         # Initialise to -inf so the first update always takes effect,
         # regardless of whether rewards are negative (as in the fruit tree).
         self.ideal_point = np.full(self.num_objectives, -np.inf)
-
-        # nd_decomp[s][a]: decomposition-specific bootstrap set.
-        # Stores the best Q-vector per weight vector (Chebyshev-optimal)
-        # rather than the full non-dominated set. Used only when
-        # action_eval='decomposition'. Initialised identically to
-        # non_dominated so the Q-set computation is consistent at the start.
-        self.nd_decomp = [
-            [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
-            for _ in range(self.num_states)
-        ]
+        self.max_nd_size = len(self.weights)
+        self.archive = set()
 
     # ------------------------------------------------------------------
     # Ideal point
@@ -211,11 +209,9 @@ class PQL(MOAgent):
         Called once per episode end so the cost is amortised over the
         episode length rather than paid at every step.
         """
-        for s in range(self.num_states):
-            if self.counts[s].sum() == 0:
-                continue
+        for s in self.counts:
             for a in range(self.num_actions):
-                if self.counts[s, a] == 0:
+                if self.counts[s][a] == 0:
                     continue
                 for vec in self.get_q_set(s, a, decomp=decomp):
                     self.ideal_point = np.maximum(self.ideal_point, np.array(vec))
@@ -226,23 +222,31 @@ class PQL(MOAgent):
 
     def score_pareto_cardinality(self, state: int):
         """Pareto-based scoring: count non-dominated contributions per action."""
-        q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
-        candidates = set().union(*q_sets)
+        visited = {a: self.get_q_set(state, a)
+                   for a in range(self.num_actions)
+                   if self.counts[state][a] > 0}
+        if not visited:
+            return np.ones(self.num_actions)  # uniform -> random selection
+        candidates = set().union(*visited.values())
         non_dominated = get_non_dominated(candidates)
         scores = np.zeros(self.num_actions)
-
         for vec in non_dominated:
-            for action, q_set in enumerate(q_sets):
+            for a, q_set in visited.items():
                 if vec in q_set:
-                    scores[action] += 1
-
+                    scores[a] += 1
         return scores
 
     def score_hypervolume(self, state: int):
         """Indicator-based scoring: hypervolume contribution per action."""
-        q_sets = [self.get_q_set(state, action) for action in range(self.num_actions)]
-        action_scores = [hypervolume(self.ref_point, list(q_set)) for q_set in q_sets]
-        return action_scores
+        visited = [a for a in range(self.num_actions)
+                   if self.counts[state][a] > 0]
+        if not visited:
+            return np.ones(self.num_actions)
+        scores = np.zeros(self.num_actions)
+        for a in visited:
+            scores[a] = hypervolume(self.ref_point,
+                                    list(self.get_q_set(state, a)))
+        return scores
 
     def score_decomposition(self, state: int):
         """Decomposition-based scoring using Chebyshev scalarisation.
@@ -260,31 +264,25 @@ class PQL(MOAgent):
         A = num_actions, V = average Q-set size. This is independent of
         the total number of weight vectors W.
         """
-        # Use decomp=True so Q-sets bootstrap from nd_decomp
-        q_sets = [self.get_q_set(state, action, decomp=True) for action in range(self.num_actions)]
+        visited = {a: self.get_q_set(state, a, decomp=True)
+                   for a in range(self.num_actions)
+                   if self.counts[state][a] > 0}
+        if not visited:
+            return np.ones(self.num_actions)
         scores = np.zeros(self.num_actions)
-
-        # Pick a random subproblem and restrict to its neighbourhood,
-        # exactly as MOEA/D selects a subproblem index at each iteration.
         i = self.np_random.integers(len(self.weights))
-        neighbour_indices = self.neighbourhoods[i]
-
-        for idx in neighbour_indices:
+        for idx in self.neighbourhoods[i]:
             w = self.weights[idx]
             best_action = None
             best_scalarised = np.inf
-
-            for action, q_set in enumerate(q_sets):
+            for a, q_set in visited.items():
                 for vec in q_set:
-                    # Chebyshev: minimise the worst weighted shortfall from ideal
                     scalarised = np.max(w * (self.ideal_point - np.array(vec)))
                     if scalarised < best_scalarised:
                         best_scalarised = scalarised
-                        best_action = action
-
+                        best_action = a
             if best_action is not None:
                 scores[best_action] += 1
-
         return scores
 
     # ------------------------------------------------------------------
@@ -302,7 +300,7 @@ class PQL(MOAgent):
         """
         nd = self.nd_decomp[state][action] if decomp else self.non_dominated[state][action]
         nd_array = np.array(list(nd))
-        q_array = self.avg_reward[state, action] + self.gamma * nd_array
+        q_array = self.avg_reward[state][action] + self.gamma * nd_array
         return {tuple(vec) for vec in q_array}
 
     def select_action(self, state: int, score_func: Callable):
@@ -315,12 +313,43 @@ class PQL(MOAgent):
                 np.argwhere(action_scores == np.max(action_scores)).flatten()
             )
 
-    def calc_non_dominated(self, state: int):
-        """Return the Pareto non-dominated Q-vectors across all actions at a state.
-        Used by the pareto and indicator Bellman updates.
+    def _subsample_nd(self, nd: set) -> set:
+        """Subsample a non-dominated set to max_nd_size using crowding distance.
+
+        Preserves diversity by retaining the most spread-out vectors —
+        the same criterion used by NSGA-II for truncation within a rank.
+        Applied only when len(nd) > max_nd_size (= len(weights)).
         """
-        candidates = set().union(*[self.get_q_set(state, action) for action in range(self.num_actions)])
-        return get_non_dominated(candidates)
+        if len(nd) <= self.max_nd_size:
+            return nd
+        arr = np.array(list(nd))
+        n, d = arr.shape
+        crowd = np.zeros(n)
+        for obj in range(d):
+            order = np.argsort(arr[:, obj])
+            crowd[order[0]] = crowd[order[-1]] = np.inf
+            obj_range = arr[order[-1], obj] - arr[order[0], obj]
+            if obj_range == 0:
+                continue
+            for i in range(1, n - 1):
+                crowd[order[i]] += (
+                        (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / obj_range
+                )
+        keep = np.argsort(crowd)[-self.max_nd_size:]
+        return {tuple(arr[i]) for i in keep}
+
+    def calc_non_dominated(self, state: int):
+        candidates = set().union(*[
+            self.get_q_set(state, a)
+            for a in range(self.num_actions)
+            if self.counts[state][a] > 0
+        ])
+        if not candidates:
+            return {tuple(np.zeros(self.num_objectives))}
+        if len(candidates) == 1:
+            return candidates
+        nd = get_non_dominated(candidates)
+        return self._subsample_nd(nd)
 
     def calc_decomp_best(self, state: int) -> set:
         """Return the global best-per-weight Q-vector set at a state.
@@ -331,24 +360,25 @@ class PQL(MOAgent):
         analog of calc_non_dominated: a single shared bootstrap for all
         actions at this state.
         """
-        q_sets = [self.get_q_set(state, action, decomp=True)
-                for action in range(self.num_actions)]
+        q_sets = [
+            self.get_q_set(state, a, decomp=True)
+            for a in range(self.num_actions)
+            if self.counts[state][a] > 0  # exclude unvisited actions
+        ]
+        if not q_sets:
+            return {tuple(np.zeros(self.num_objectives))}
         global_set = set()
-
         for w in self.weights:
             best_vec = None
             best_scalarised = np.inf
-
             for q_set in q_sets:
                 for vec in q_set:
                     scalarised = np.max(w * (self.ideal_point - np.array(vec)))
                     if scalarised < best_scalarised:
                         best_scalarised = scalarised
                         best_vec = vec
-
             if best_vec is not None:
                 global_set.add(best_vec)
-
         return global_set if global_set else {tuple(np.zeros(self.num_objectives))}
 
     # ------------------------------------------------------------------
@@ -408,15 +438,15 @@ class PQL(MOAgent):
                 next_state = int(np.ravel_multi_index(next_state, self.env_shape))
 
                 # avg_reward update — identical for all three variants
-                self.counts[state, action] += 1
+                self.counts[state][action] += 1
 
                 # Bellman update — paradigm-specific
                 if is_decomp:
                     self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
                 else:
                     self.non_dominated[state][action] = self.calc_non_dominated(next_state)
-                self.avg_reward[state, action] += (
-                        (reward - self.avg_reward[state, action]) / self.counts[state, action]
+                self.avg_reward[state][action] += (
+                        (reward - self.avg_reward[state][action]) / self.counts[state][action]
                 )
 
                 state = next_state
@@ -424,11 +454,21 @@ class PQL(MOAgent):
                 # Convergence logging
                 if self.global_step >= next_log_step:
                     pcs = self.get_local_pcs(state=0, decomp=is_decomp)
-                    hv = hypervolume(self.ref_point, list(pcs)) if pcs else 0.0
+
+                    # Exclude the zero-initialisation phantom vector — it dominates all
+                    # real (negative) reward vectors under maximisation convention and
+                    # would permanently corrupt the archive once added.
+                    real_pcs = {v for v in pcs if any(x != 0.0 for x in v)}
+
+                    self.archive |= real_pcs
+                    if len(self.archive) > 1:
+                        self.archive = get_non_dominated(self.archive)
+
+                    hv = hypervolume(self.ref_point, list(self.archive)) if self.archive else 0.0
                     convergence_log.append({
                         "timestep": self.global_step,
                         "hypervolume": hv,
-                        "pcs_size": len(pcs),
+                        "pcs_size": len(self.archive),
                         "epsilon": self.epsilon,
                     })
                     next_log_step += log_every
@@ -445,7 +485,13 @@ class PQL(MOAgent):
                 self.final_epsilon,
             )
 
-        return self.get_local_pcs(state=0, decomp=is_decomp), convergence_log
+        # Final archive update before returning
+        pcs = self.get_local_pcs(state=0, decomp=is_decomp)
+        real_pcs = {v for v in pcs if any(x != 0.0 for x in v)}
+        self.archive |= real_pcs
+        if len(self.archive) > 1:
+            self.archive = get_non_dominated(self.archive)
+        return self.archive, convergence_log
 
     # ------------------------------------------------------------------
     # Result extraction
@@ -461,6 +507,31 @@ class PQL(MOAgent):
             state: Flattened state index.
             decomp: If True, build candidates from nd_decomp Q-sets.
         """
-        q_sets = [self.get_q_set(state, action, decomp=decomp) for action in range(self.num_actions)]
+        q_sets = [
+            self.get_q_set(state, a, decomp=decomp)
+            for a in range(self.num_actions)
+            if self.counts[state][a] > 0  # exclude unvisited actions
+        ]
+        if not q_sets:
+            return set()
         candidates = set().union(*q_sets)
+        if not candidates:
+            return set()
+        if len(candidates) == 1:
+            return candidates
         return get_non_dominated(candidates)
+
+    def get_config(self):
+        return {
+            "env_id": self.env.unwrapped.spec.id if hasattr(self.env.unwrapped, "spec") else "FruitTree",
+            "gamma": self.gamma,
+            "initial_epsilon": self.initial_epsilon,
+            "epsilon_decay_steps": self.epsilon_decay_steps,
+            "final_epsilon": self.final_epsilon,
+            "num_states": self.num_states,
+            "num_actions": self.num_actions,
+            "num_objectives": self.num_objectives,
+            "ref_point": self.ref_point.tolist(),
+            "num_weights": len(self.weights),
+            "neighbourhood_size": self.neighbourhood_size,
+        }

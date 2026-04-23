@@ -218,3 +218,7 @@ class TwoLakeEnv(gym.Env):
                   + inflows2[n - 1])
 
         return X1_traj, X2_traj, X1_new, X2_new
+
+    @property
+    def unwrapped(self):
+        return self
