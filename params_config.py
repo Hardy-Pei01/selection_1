@@ -1,12 +1,12 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 10
+tree_depth = 8
 tree_multi_obj = 2
 tree_many_obj = 6
 lake_multi_obj = 2
 lake_many_obj = 6
 total_years = 100
-years_per_action = 1
+years_per_action = 5
 
 multi_objs_tree_params = {
     'depth': tree_depth,

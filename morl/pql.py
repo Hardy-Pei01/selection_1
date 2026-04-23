@@ -104,6 +104,7 @@ class PQL(MOAgent):
             seed=None,
             num_weight_divisions=5,
             neighbourhood_size=5,
+            nd_update_freq=1
     ):
         """Initialise PQL.
 
@@ -181,7 +182,7 @@ class PQL(MOAgent):
         # Initialise to -inf so the first update always takes effect,
         # regardless of whether rewards are negative (as in the fruit tree).
         self.ideal_point = np.full(self.num_objectives, -np.inf)
-        self.max_nd_size = len(self.weights)
+        self.nd_update_freq = nd_update_freq
         self.archive = set()
 
     # ------------------------------------------------------------------
@@ -313,31 +314,6 @@ class PQL(MOAgent):
                 np.argwhere(action_scores == np.max(action_scores)).flatten()
             )
 
-    def _subsample_nd(self, nd: set) -> set:
-        """Subsample a non-dominated set to max_nd_size using crowding distance.
-
-        Preserves diversity by retaining the most spread-out vectors —
-        the same criterion used by NSGA-II for truncation within a rank.
-        Applied only when len(nd) > max_nd_size (= len(weights)).
-        """
-        if len(nd) <= self.max_nd_size:
-            return nd
-        arr = np.array(list(nd))
-        n, d = arr.shape
-        crowd = np.zeros(n)
-        for obj in range(d):
-            order = np.argsort(arr[:, obj])
-            crowd[order[0]] = crowd[order[-1]] = np.inf
-            obj_range = arr[order[-1], obj] - arr[order[0], obj]
-            if obj_range == 0:
-                continue
-            for i in range(1, n - 1):
-                crowd[order[i]] += (
-                        (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / obj_range
-                )
-        keep = np.argsort(crowd)[-self.max_nd_size:]
-        return {tuple(arr[i]) for i in keep}
-
     def calc_non_dominated(self, state: int):
         candidates = set().union(*[
             self.get_q_set(state, a)
@@ -348,8 +324,7 @@ class PQL(MOAgent):
             return {tuple(np.zeros(self.num_objectives))}
         if len(candidates) == 1:
             return candidates
-        nd = get_non_dominated(candidates)
-        return self._subsample_nd(nd)
+        return get_non_dominated(candidates)
 
     def calc_decomp_best(self, state: int) -> set:
         """Return the global best-per-weight Q-vector set at a state.
@@ -441,10 +416,12 @@ class PQL(MOAgent):
                 self.counts[state][action] += 1
 
                 # Bellman update — paradigm-specific
-                if is_decomp:
-                    self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
-                else:
-                    self.non_dominated[state][action] = self.calc_non_dominated(next_state)
+                if self.global_step % self.nd_update_freq == 0:
+                    if is_decomp:
+                        self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
+                    else:
+                        self.non_dominated[state][action] = self.calc_non_dominated(next_state)
+
                 self.avg_reward[state][action] += (
                         (reward - self.avg_reward[state][action]) / self.counts[state][action]
                 )
@@ -534,4 +511,5 @@ class PQL(MOAgent):
             "ref_point": self.ref_point.tolist(),
             "num_weights": len(self.weights),
             "neighbourhood_size": self.neighbourhood_size,
+            "nd_update_freq": self.nd_update_freq,
         }
