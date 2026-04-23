@@ -24,32 +24,32 @@ def build_robustness_functions(num_obj):
     ]
 
 
-def count_robust(robust_goal, robust_threshold, outcomes):
-    if robust_goal == 'min':
-        return np.sum(outcomes <= robust_threshold) / outcomes.shape[0]
-    else:
-        return np.sum(outcomes >= robust_threshold) / outcomes.shape[0]
-
-
-LAKE_THRESHOLDS_6 = [-0.75, -0.75, -0.9, -0.9, 0.5, 0.5]
-LAKE_THRESHOLDS_2 = [-0.75, -0.9]
-
-
-def build_satisficing_functions(num_obj, thresholds):
-    return [
-        ScalarOutcome(
-            f'sat_o{i + 1}',
-            kind=ScalarOutcome.MINIMIZE,
-            variable_name=f'o{i + 1}',
-            function=lambda outcomes, t=thresholds[i]: -count_robust('min', t, outcomes)
-        )
-        for i in range(num_obj)
-    ]
-
-
-def build_satisficing_functions_lake(num_obj):
-    thresholds = LAKE_THRESHOLDS_2 if num_obj == 2 else LAKE_THRESHOLDS_6
-    return build_satisficing_functions(num_obj, thresholds)
+# def count_robust(robust_goal, robust_threshold, outcomes):
+#     if robust_goal == 'min':
+#         return np.sum(outcomes <= robust_threshold) / outcomes.shape[0]
+#     else:
+#         return np.sum(outcomes >= robust_threshold) / outcomes.shape[0]
+#
+#
+# LAKE_THRESHOLDS_6 = [-0.75, -0.75, -0.9, -0.9, 0.5, 0.5]
+# LAKE_THRESHOLDS_2 = [-0.75, -0.9]
+#
+#
+# def build_satisficing_functions(num_obj, thresholds):
+#     return [
+#         ScalarOutcome(
+#             f'sat_o{i + 1}',
+#             kind=ScalarOutcome.MINIMIZE,
+#             variable_name=f'o{i + 1}',
+#             function=lambda outcomes, t=thresholds[i]: -count_robust('min', t, outcomes)
+#         )
+#         for i in range(num_obj)
+#     ]
+#
+#
+# def build_satisficing_functions_lake(num_obj):
+#     thresholds = LAKE_THRESHOLDS_2 if num_obj == 2 else LAKE_THRESHOLDS_6
+#     return build_satisficing_functions(num_obj, thresholds)
 
 
 def build_optimization_scenarios(model, params):
@@ -65,10 +65,7 @@ def run_moea(model, params, file_end, start_time, problem):
 
     scenarios = build_optimization_scenarios(model, params)
     num_obj = len(model.outcomes)
-    if problem == 'lake':
-        robustness_functions = build_satisficing_functions_lake(num_obj)
-    else:
-        robustness_functions = build_robustness_functions(num_obj)
+    robustness_functions = build_robustness_functions(num_obj)
 
     with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
         arch, conv = evaluator.robust_optimize(

@@ -1,8 +1,7 @@
 import os
-import pandas as pd
+import time
 from ema_workbench import (MultiprocessingEvaluator, SequentialEvaluator)
 from ema_workbench.em_framework.optimization import (EpsilonProgress)
-import time
 
 
 def run_moea(model, params, file_end, reference, ref_num, start_time):
