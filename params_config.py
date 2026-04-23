@@ -1,6 +1,6 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 8
+tree_depth = 10
 tree_multi_obj = 2
 tree_many_obj = 6
 lake_multi_obj = 2
