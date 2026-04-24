@@ -7,7 +7,7 @@ from collections import defaultdict
 import time
 
 activate_logging = True
-root_folder = f'./data_{tree_depth}'
+root_folder = f'./data_{tree_depth}_2'
 
 run_policy = {
     'intertemporal': True,
@@ -25,7 +25,7 @@ run_scenario_method = {
 }
 
 obj_uncertain = {
-    'multi_obj': True,
+    'multi_obj': False,
     'many_obj': True
 }
 

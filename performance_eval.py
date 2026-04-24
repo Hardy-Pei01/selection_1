@@ -4,12 +4,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.patches import Patch
-from pymoo.indicators.hv import HV
+from morl_baselines.common.performance_indicators import hypervolume
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-depth = 'lake_robust_1'
-data_dir = f"./lake_data/data_{depth}"
-out_dir = "./lake_figures"
+depth = '11'
+data_dir = f"./tree_data/data_{depth}"
+out_dir = "./tree_figures"
 
 # Reference points — must be strictly worse than all achievable objectives.
 # Fruit tree: objectives in [-1, 0]
@@ -88,14 +88,14 @@ for folder_name in sorted(os.listdir(data_dir)):
         continue
 
     df = pd.read_csv(os.path.join(folder_path, csv_files[0]))
-    objectives = get_objectives(df)
+    objectives = abs(get_objectives(df))
     n_obj = objectives.shape[1] if objectives.ndim == 2 else 0
 
     if n_obj == 0 or len(objectives) == 0:
         continue
 
     ref_point = np.full(n_obj, -1.0)
-    hv_val = float(HV(ref_point=ref_point)(objectives))
+    hv_val = hypervolume(ref_point, [tuple(r) for r in objectives])
 
     records.append({
         "folder_name": folder_name,
@@ -134,7 +134,7 @@ for i, obj_type in enumerate(obj_types):
 COLORS = {"multi_obj": "steelblue", "many_obj": "#e07b39"}
 bar_colors = [COLORS[o] for o in obj_types]
 
-GROUP_LABELS = {"multi_obj": "2-objective", "many_obj": "Many-objective"}
+GROUP_LABELS = {"multi_obj": "2-objective", "many_obj": "6-objective"}
 
 # ── Plot: HV (primary) + archive size (secondary) ─────────────────────────────
 

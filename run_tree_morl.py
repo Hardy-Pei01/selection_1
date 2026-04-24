@@ -72,8 +72,8 @@ def _nested():
 
 
 timestep_settings = _nested()
-timestep_settings['single']['multi_obj']['deterministic'] = 50000
-timestep_settings['single']['many_obj']['deterministic'] = 50000
+timestep_settings['single']['multi_obj']['deterministic'] = 200000
+timestep_settings['single']['many_obj']['deterministic'] = 200000
 timestep_settings['multi']['multi_obj']['robust'] = 50000
 timestep_settings['multi']['many_obj']['robust'] = 50000
 timestep_settings['moro']['multi_obj']['robust'] = 50000

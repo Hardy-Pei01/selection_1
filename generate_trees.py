@@ -8,7 +8,7 @@ from count_non_dominated import is_nondominated
 # ── Fixed seeds ───────────────────────────────────────────────────────────────
 # Change only if you deliberately want a different benchmark instance.
 TREE_SEED = 42  # Pareto-leaf hypersphere draw
-DOMINATE_SEED = [7, 29]  # dominated-leaf selection and offset sampling
+DOMINATE_SEED = [7, 29, 98, 37, 41]  # dominated-leaf selection and offset sampling
 
 # ── Benchmark hyperparameters ─────────────────────────────────────────────────
 OFFSET_LOW = 0.5  # minimum per-objective offset subtracted from parent leaves
@@ -82,7 +82,7 @@ def generate_leaf_rewards(
     # may end up non-dominated by accident (if its parent happened to be near
     # the boundary).  is_nondominated uses minimisation convention, so negate
     # rewards to convert to the maximisation problem used here.
-    nd_mask = is_nondominated(-all_rewards)
+    nd_mask = is_nondominated(all_rewards)
 
     # ── Sort by objectives descending (best first for readability) ────────────
     sort_keys = tuple(-all_rewards[:, i] for i in range(reward_dim - 1, -1, -1))
@@ -136,6 +136,9 @@ def main(
 
 
 if __name__ == "__main__":
-    depth = 14
+    depth = 9
     main(depth=depth, reward_dim=2, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[0])
+    main(depth=depth, reward_dim=4, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[2])
     main(depth=depth, reward_dim=6, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[1])
+    main(depth=depth, reward_dim=8, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[3])
+    main(depth=depth, reward_dim=10, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[4])
