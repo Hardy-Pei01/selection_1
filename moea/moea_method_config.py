@@ -1,6 +1,6 @@
 from params_config import (default_tree_scenario, default_tree_scenario_robust,
                            default_lake_scenario, tree_multi_obj, tree_many_obj)
-import moea.moea_multi as multi
+import moea.moea_single as multi
 import moea.moea_moro as moro
 from ema_workbench import (Scenario)
 from moea.algos import NSGAII, IBEA, MOEAD
@@ -26,7 +26,7 @@ class base_tree_params(base_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
         super().__init__(name, nfe, algo, root_folder, robust, scenarios)
         if many_obj:
-            self.epsilons = [0.01] * tree_many_obj
+            self.epsilons = [0.001] * tree_many_obj
         else:
             self.epsilons = [0.001] * tree_multi_obj
 

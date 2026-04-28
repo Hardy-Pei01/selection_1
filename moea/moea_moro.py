@@ -1,15 +1,15 @@
 import os
 import time
 
-from ema_workbench import (ScalarOutcome, MultiprocessingEvaluator, SequentialEvaluator)
-from ema_workbench.em_framework.samplers import sample_uncertainties
+from ema_workbench import (ScalarOutcome, MultiprocessingEvaluator, Scenario)
 from ema_workbench.em_framework.optimization import EpsilonProgress
+from params_config import lake_scenarios_path, slip_patterns_path
 
 import numpy as np
 
 
 def percentile_20(outcomes):
-    return -np.percentile(outcomes, 20)
+    return np.percentile(outcomes, 80)
 
 
 def build_robustness_functions(num_obj):
@@ -24,8 +24,19 @@ def build_robustness_functions(num_obj):
     ]
 
 
-def build_optimization_scenarios(model, params):
-    return sample_uncertainties(model, 50)
+def build_optimization_scenarios(problem):
+    if problem == 'tree':
+        patterns = np.load(slip_patterns_path)
+        return [Scenario(f'scenario_{i}', scenario_index=i)
+                for i in range(len(patterns))]
+    else:
+        scenarios = np.load(lake_scenarios_path)
+        return [Scenario(f'scenario_{i}',
+                         b1=float(s['b1']), q1=float(s['q1']),
+                         b2=float(s['b2']), q2=float(s['q2']),
+                         inflow_seed1=int(s['inflow_seed1']),
+                         inflow_seed2=int(s['inflow_seed2']))
+                for i, s in enumerate(scenarios)]
 
 
 def run_moea(model, params, file_end, start_time, problem):
@@ -35,7 +46,7 @@ def run_moea(model, params, file_end, start_time, problem):
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
 
-    scenarios = build_optimization_scenarios(model, params)
+    scenarios = build_optimization_scenarios(problem)
     num_obj = len(model.outcomes)
     robustness_functions = build_robustness_functions(num_obj)
 

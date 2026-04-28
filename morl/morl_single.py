@@ -3,28 +3,29 @@ import time
 import numpy as np
 import pandas as pd
 from morl.pql import PQL
-from morl.policy_eval import extract_policy
+from morl.policy_eval import extract_policy, extract_lake_policy
 
 
 def run_morl_single(
-    env,
-    scoring,
-    timesteps,
-    ref_point,
-    num_weight_divisions,
-    neighbourhood_size,
-    output_folder,
-    file_end,
-    ref_num=None,
-    start_time=None,
+        env,
+        scoring,
+        timesteps,
+        ref_point,
+        num_weight_divisions,
+        neighbourhood_size,
+        output_folder,
+        file_end,
+        ref_num=None,
+        start_time=None,
 ):
-
     os.makedirs(output_folder, exist_ok=True)
+
+    is_tree = hasattr(env.unwrapped, 'tree_depth')
 
     agent = PQL(
         env=env,
         ref_point=ref_point,
-        gamma=1.0,
+        gamma=1.0 if is_tree else 0.98,
         initial_epsilon=1.0,
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05,
@@ -51,20 +52,25 @@ def run_morl_single(
     # ── Build convergence dataframe ───────────────────────────────────────
     conv_df = pd.DataFrame(conv_log)
 
-    # Attach elapsed time and reference label — mirrors moea/single.py
-    if ref_num is not None:
-        if start_time is not None:
-            elapsed = int(time.time() - start_time)
-            conv_df['time'] = time.strftime('%H:%M:%S', time.gmtime(elapsed))
-        if not pcs_df.empty:
-            pcs_df['reference_scenario'] = ref_num
+    if start_time is not None:
+        elapsed = int(time.time() - start_time)
+        conv_df['time'] = time.strftime('%H:%M:%S', time.gmtime(elapsed))
+    if ref_num is not None and not pcs_df.empty:
+        pcs_df['reference_scenario'] = ref_num
 
     # ── Persist ───────────────────────────────────────────────────────────
     policy_rows = []
     for pol_id, target_vec in enumerate(pcs):
-        decisions = extract_policy(agent, target_vec)
-        row = {'policy_id': pol_id}
-        row.update({f'l{i}': d for i, d in enumerate(decisions)})
+        if is_tree:
+            decisions = extract_policy(agent, target_vec)
+            row = {'policy_id': pol_id}
+            row.update({f'l{i}': d for i, d in enumerate(decisions)})
+        else:
+            decisions = extract_lake_policy(agent, target_vec, env)
+            row = {'policy_id': pol_id}
+            for step, (u1, u2) in enumerate(decisions):
+                row[f'u1_{step}'] = int(u1)
+                row[f'u2_{step}'] = int(u2)
         policy_rows.append(row)
 
     policies_df = pd.DataFrame(policy_rows) if policy_rows else pd.DataFrame()

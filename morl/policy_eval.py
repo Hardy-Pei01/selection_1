@@ -47,6 +47,42 @@ def extract_policy(agent, target_vec):
     return decisions
 
 
+def extract_lake_policy(agent, target_vec, env):
+
+    target = np.array(target_vec)
+    state, _ = env.reset()
+    state_flat = int(np.ravel_multi_index(state, agent.env_shape))
+    decisions = []
+    terminated = False
+
+    while not terminated:
+        best_action = None
+        best_dist = np.inf
+        next_target = target
+
+        for a in range(agent.num_actions):
+            if agent.counts[state_flat][a] == 0:
+                continue
+            for q_vec in agent.get_q_set(state_flat, a):
+                dist = np.sum(np.abs(np.array(q_vec) - target))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_action = a
+                    next_target = np.array(q_vec) / agent.gamma \
+                        if agent.gamma > 0 else np.array(q_vec)
+
+        if best_action is None:
+            best_action = 0
+
+        action_nd = np.unravel_index(best_action, env.action_space.nvec)
+        decisions.append(action_nd)
+        next_state, _, terminated, _, _ = env.step(np.array(action_nd))
+        state_flat = int(np.ravel_multi_index(next_state, agent.env_shape))
+        target = next_target
+
+    return decisions
+
+
 def evaluate_policies_across_scenarios(agent, env_factory, n_scenarios):
     n_obj = agent.num_objectives
     rows = []

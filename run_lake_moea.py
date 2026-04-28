@@ -30,8 +30,8 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'non_param': True,
-    'param': False
+    'deterministic': True,
+    'robust': False
 }
 
 
@@ -40,28 +40,28 @@ def nested_dict():
 
 
 nfe_settings = nested_dict()
-nfe_settings['intertemporal']['single']['multi_obj']['non_param'] = 100000
-nfe_settings['intertemporal']['single']['many_obj']['non_param'] = 100000
-nfe_settings['dps']['single']['multi_obj']['non_param'] = 100000
-nfe_settings['dps']['single']['many_obj']['non_param'] = 100000
-nfe_settings['intertemporal']['multi']['multi_obj']['param'] = 100000
-nfe_settings['intertemporal']['multi']['many_obj']['param'] = 100000
-nfe_settings['dps']['multi']['multi_obj']['param'] = 100000
-nfe_settings['dps']['multi']['many_obj']['param'] = 100000
-nfe_settings['intertemporal']['moro']['multi_obj']['param'] = 100000
-nfe_settings['intertemporal']['moro']['many_obj']['param'] = 100000
-nfe_settings['dps']['moro']['multi_obj']['param'] = 100000
-nfe_settings['dps']['moro']['many_obj']['param'] = 100000
+nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 100000
+nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 100000
+nfe_settings['dps']['single']['multi_obj']['deterministic'] = 100000
+nfe_settings['dps']['single']['many_obj']['deterministic'] = 100000
+nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 100000
+nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 100000
+nfe_settings['dps']['multi']['multi_obj']['robust'] = 100000
+nfe_settings['dps']['multi']['many_obj']['robust'] = 100000
+nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 100000
+nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 100000
+nfe_settings['dps']['moro']['multi_obj']['robust'] = 100000
+nfe_settings['dps']['moro']['many_obj']['robust'] = 100000
 
 model_settings = nested_dict()
-model_settings['intertemporal']['multi_obj']['non_param'] = (inter_lake_model, 'interMulti')
-model_settings['intertemporal']['many_obj']['non_param'] = (inter_lake_model, 'interMany')
-model_settings['intertemporal']['multi_obj']['param'] = (inter_robust_lake_model, 'interMultiRobust')
-model_settings['intertemporal']['many_obj']['param'] = (inter_robust_lake_model, 'interManyRobust')
-model_settings['dps']['multi_obj']['non_param'] = (dps_lake_model, 'dpsMulti')
-model_settings['dps']['many_obj']['non_param'] = (dps_lake_model, 'dpsMany')
-model_settings['dps']['multi_obj']['param'] = (dps_robust_lake_model, 'dpsMultiRobust')
-model_settings['dps']['many_obj']['param'] = (dps_robust_lake_model, 'dpsManyRobust')
+model_settings['intertemporal']['multi_obj']['deterministic'] = (inter_lake_model, 'interMulti')
+model_settings['intertemporal']['many_obj']['deterministic'] = (inter_lake_model, 'interMany')
+model_settings['intertemporal']['multi_obj']['robust'] = (inter_robust_lake_model, 'interMultiRobust')
+model_settings['intertemporal']['many_obj']['robust'] = (inter_robust_lake_model, 'interManyRobust')
+model_settings['dps']['multi_obj']['deterministic'] = (dps_lake_model, 'dpsMulti')
+model_settings['dps']['many_obj']['deterministic'] = (dps_lake_model, 'dpsMany')
+model_settings['dps']['multi_obj']['robust'] = (dps_robust_lake_model, 'dpsMultiRobust')
+model_settings['dps']['many_obj']['robust'] = (dps_robust_lake_model, 'dpsManyRobust')
 
 if __name__ == '__main__':
     if activate_logging:

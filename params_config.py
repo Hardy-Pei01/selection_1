@@ -10,6 +10,9 @@ years_per_action = 5
 slip_patterns_path = f'./fruits/slip_patterns_depth{tree_depth}.npy'
 tree_n_scenarios = 50
 nd_size_cap = 2**(tree_depth+2)
+lake_scenarios_path = './lakes/lake_scenarios.npy'
+lake_n_scenarios = 50
+nd_size_cap_lake = 2048
 
 multi_objs_tree_params = {
     'depth': tree_depth,
@@ -69,8 +72,8 @@ multi_objs_lake_params = {
         RealParameter('q1', 2.0,  4.5),
         RealParameter('b2', 0.10, 0.45),
         RealParameter('q2', 2.0,  4.5),
-        IntegerParameter('inflow_seed1', 0, 1000000),
-        IntegerParameter('inflow_seed2', 0, 1000000),
+        IntegerParameter('inflow_seed1', 0, 10000),
+        IntegerParameter('inflow_seed2', 0, 10000),
     ],
 
     'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE)
@@ -91,8 +94,8 @@ many_objs_lake_params = {
         RealParameter('q1', 2.0,  4.5),
         RealParameter('b2', 0.10, 0.45),
         RealParameter('q2', 2.0,  4.5),
-        IntegerParameter('inflow_seed1', 0, 1000000),
-        IntegerParameter('inflow_seed2', 0, 1000000),
+        IntegerParameter('inflow_seed1', 0, 10000),
+        IntegerParameter('inflow_seed2', 0, 10000),
     ],
 
     'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE)
