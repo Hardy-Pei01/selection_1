@@ -1,21 +1,3 @@
-"""Fruit-tree MORL experiment runner — mirrors run_tree_moea.py.
-
-Toggle the flag dicts below to select which experiments to run, then execute:
-
-    python run_tree_morl.py
-
-Correspondence with run_tree_moea.py:
-  run_scoring        <-> run_evo_method   (algorithm selection)
-  run_scenario_method                      (identical structure)
-  obj_uncertain                            (identical structure)
-  param_uncertain                          (identical structure)
-  nfe_settings       <-> timestep_settings
-  morl_multi()       <-> moea_multi()
-  morl_moro()        <-> moea_moro()
-  multi_tree_morl_params <-> multi_tree_params
-  moro_tree_morl_params  <-> moro_tree_params
-"""
-
 import time
 from collections import defaultdict
 
@@ -33,13 +15,13 @@ from morl.morl_method_config import (
 root_folder = f'./data_morl_{tree_depth}'
 
 # ── Experiment toggles ────────────────────────────────────────────────────────
-# Set a value to True to include that dimension in the run grid.
+# Set a value to 1 to include that dimension in the run grid.
 
 # PQL action-evaluation method (analog of run_evo_method in run_tree_moea.py)
 run_scoring = {
-    'pareto': True,
-    'indicator': True,
-    'decomposition': True,
+    'pareto': 1,
+    'indicator': 1,
+    'decomposition': 1,
 }
 
 # Scenario method:
@@ -47,21 +29,21 @@ run_scoring = {
 #   multi  — one run per reference slip_prob + base, results combined
 #   moro   — one run across 50 sampled scenarios (robust optimisation)
 run_scenario_method = {
-    'single': True,
-    'multi': False,
-    'moro': False,
+    'single': 0,
+    'multi': 0,
+    'moro': 1,
 }
 
 # Objective dimensionality
 obj_uncertain = {
-    'multi_obj': True,  # 2-objective tree
-    'many_obj': True,  # 6-objective tree  (tree_many_obj from params_config)
+    'multi_obj': 1,  # 2-objective tree
+    'many_obj': 1,  # 6-objective tree  (tree_many_obj from params_config)
 }
 
 # Parametric uncertainty (slip_prob)
 param_uncertain = {
-    'deterministic': True,  # fixed slip_prob=0.0  — only valid with 'single'
-    'robust': False,  # uncertain slip_prob  — only valid with 'multi'/'moro'
+    'deterministic': 0,  # fixed slip_prob=0.0  — only valid with 'single'
+    'robust': 1,  # uncertain slip_prob  — only valid with 'multi'/'moro'
 }
 
 
@@ -74,10 +56,10 @@ def _nested():
 timestep_settings = _nested()
 timestep_settings['single']['multi_obj']['deterministic'] = 200000
 timestep_settings['single']['many_obj']['deterministic'] = 200000
-timestep_settings['multi']['multi_obj']['robust'] = 50000
-timestep_settings['multi']['many_obj']['robust'] = 50000
-timestep_settings['moro']['multi_obj']['robust'] = 50000
-timestep_settings['moro']['many_obj']['robust'] = 50000
+timestep_settings['multi']['multi_obj']['robust'] = 200000
+timestep_settings['multi']['many_obj']['robust'] = 200000
+timestep_settings['moro']['multi_obj']['robust'] = 200000
+timestep_settings['moro']['many_obj']['robust'] = 200000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 # Objective-count-dependent settings (no moea equivalent — PQL-specific).
@@ -138,7 +120,7 @@ if __name__ == '__main__':
                     print(f'This experiment is {name}')
                     print('--------------------------------------------------------------------')
 
-                    # robust=False for 'single' (non_param), True for 'multi'/'moro' (param)
+                    # robust=0 for 'single' (non_param), 1 for 'multi'/'moro' (param)
                     robust = (key_param == 'robust')
 
                     start_time = time.time()

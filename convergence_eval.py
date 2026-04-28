@@ -2,8 +2,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-depth = 'lake_robust_1'
-data_dir = f"./lake_data/data_{depth}"
+depth = '10_2'
+data_dir = f"./tree_data/data_{depth}"
 
 for folder_name in sorted(os.listdir(data_dir)):
     folder_path = os.path.join(data_dir, folder_name)

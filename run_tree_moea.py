@@ -6,32 +6,32 @@ from moea.model_builder import (inter_tree_model, inter_robust_tree_model, table
 from collections import defaultdict
 import time
 
-activate_logging = True
+activate_logging = 1
 root_folder = f'./data_{tree_depth}_2'
 
 run_policy = {
-    'intertemporal': True,
-    'table': True
+    'intertemporal': 1,
+    'table': 1
 }
 run_evo_method = {
-    'NSGAII': True,
-    'IBEA': True,
-    'MOEAD': True
+    'NSGAII': 1,
+    'IBEA': 1,
+    'MOEAD': 1
 }
 run_scenario_method = {
-    'single': True,
-    'multi': False,
-    'moro': False
+    'single': 0,
+    'multi': 0,
+    'moro': 1
 }
 
 obj_uncertain = {
-    'multi_obj': False,
-    'many_obj': True
+    'multi_obj': 1,
+    'many_obj': 1
 }
 
 param_uncertain = {
-    'deterministic': True,
-    'robust': False
+    'deterministic': 0,
+    'robust': 1
 }
 
 
@@ -40,18 +40,18 @@ def tree():
 
 
 nfe_settings = tree()
-nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 50000
-nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 50000
-nfe_settings['table']['single']['multi_obj']['deterministic'] = 50000
-nfe_settings['table']['single']['many_obj']['deterministic'] = 50000
-nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 50000
-nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 50000
-nfe_settings['table']['multi']['multi_obj']['robust'] = 50000
-nfe_settings['table']['multi']['many_obj']['robust'] = 50000
-nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 50000
-nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 50000
-nfe_settings['table']['moro']['multi_obj']['robust'] = 50000
-nfe_settings['table']['moro']['many_obj']['robust'] = 50000
+nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 30000
+nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 30000
+nfe_settings['table']['single']['multi_obj']['deterministic'] = 30000
+nfe_settings['table']['single']['many_obj']['deterministic'] = 30000
+nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 60000
+nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 60000
+nfe_settings['table']['multi']['multi_obj']['robust'] = 60000
+nfe_settings['table']['multi']['many_obj']['robust'] = 60000
+nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 60000
+nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 60000
+nfe_settings['table']['moro']['multi_obj']['robust'] = 60000
+nfe_settings['table']['moro']['many_obj']['robust'] = 60000
 
 model_settings = tree()
 model_settings['intertemporal']['multi_obj']['deterministic'] = (inter_tree_model, 'interMulti')
@@ -94,19 +94,19 @@ if __name__ == '__main__':
                         print('--------------------------------------------------------------------')
 
                         if key_5 == "deterministic":
-                            robust = False
+                            robust = 0
                             scenarios = None
                         elif key_5 == "robust":
-                            robust = True
+                            robust = 1
                             scenarios = None
                         else:
                             raise Exception
                         if key_4 == "multi_obj":
                             model_params = multi_objs_tree_params
-                            many_obj = False
+                            many_obj = 0
                         elif key_4 == "many_obj":
                             model_params = many_objs_tree_params
-                            many_obj = True
+                            many_obj = 1
                         else:
                             raise Exception
                         model_func, model_name = model_settings[key_1][key_4][key_5]

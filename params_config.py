@@ -1,17 +1,20 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 9
+tree_depth = 10
 tree_multi_obj = 2
-tree_many_obj = 10
+tree_many_obj = 6
 lake_multi_obj = 2
 lake_many_obj = 6
 total_years = 100
 years_per_action = 5
+slip_patterns_path = f'./fruits/slip_patterns_depth{tree_depth}.npy'
+tree_n_scenarios = 50
+nd_size_cap = 2**(tree_depth+2)
 
 multi_objs_tree_params = {
     'depth': tree_depth,
 
-    'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
+    'uncertainties': [IntegerParameter('scenario_index', 0, tree_n_scenarios - 1)],
 
     'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE) for i in range(tree_multi_obj)],
 
@@ -20,13 +23,14 @@ multi_objs_tree_params = {
         Constant("num_obj", tree_multi_obj),
         Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_multi_obj}.csv"),
         Constant("observe", 1),
+        Constant("slip_patterns_path", slip_patterns_path),
     ]
 }
 
 many_objs_tree_params = {
     'depth': tree_depth,
 
-    'uncertainties': [RealParameter('slip_prob', 0.0, 0.2)],
+    'uncertainties': [IntegerParameter('scenario_index', 0, tree_n_scenarios - 1)],
 
     'outcomes': [ScalarOutcome(f'o{i+1}', kind=ScalarOutcome.MINIMIZE) for i in range(tree_many_obj)],
 
@@ -35,10 +39,12 @@ many_objs_tree_params = {
         Constant("num_obj", tree_many_obj),
         Constant("csv_path", f"./fruits/depth{tree_depth}_dim{tree_many_obj}.csv"),
         Constant("observe", 1),
+        Constant("slip_patterns_path", slip_patterns_path),
     ]
 }
 
-default_tree_scenario = {'slip_prob': 0.0}
+default_tree_scenario = {'scenario_index': None}
+default_tree_scenario_robust = {'scenario_index': 0}
 
 non_observable_constants_multi = [
     Constant("depth", tree_depth),

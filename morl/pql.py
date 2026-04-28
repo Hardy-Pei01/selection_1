@@ -59,39 +59,6 @@ def build_neighbourhoods(weights: np.ndarray, neighbourhood_size: int) -> list:
 
 
 class PQL(MOAgent):
-    """Pareto Q-learning with three paradigm-specific scoring criteria.
-
-    Implements a controlled comparison of three multi-objective selection
-    paradigms on a shared Q-learning substrate:
-
-    - ``'pareto'``       — Pareto cardinality scoring (original PQL).
-    - ``'indicator'``    — Hypervolume indicator scoring (original PQL).
-    - ``'decomposition'``— Chebyshev scalarisation over a neighbourhood of
-                           weight vectors, analogous to MOEA/D selection.
-
-    The pareto and indicator variants share identical data structures and
-    Bellman updates: ``non_dominated[s][a]`` stores the full Pareto-pruned
-    set of Q-vectors at each state-action pair.
-
-    The decomposition variant uses a separate ``nd_decomp[s][a]`` structure
-    that stores the best Q-vector per weight vector (via Chebyshev
-    scalarisation) rather than the full non-dominated set. This gives the
-    Bellman update the same directional pressure as MOEA/D's
-    ``_update_solution``, ensuring the bootstrapped values actively guide
-    exploration toward uncovered subproblems. Without this, the decomposition
-    scorer would be applied at action selection only, while the update remains
-    Pareto-based — causing systematic underexploration of regions not yet
-    covered by the Pareto front.
-
-    All three variants share: avg_reward update, ε-greedy exploration,
-    episode structure, hyperparameters, and the get_local_pcs result
-    extraction (which always applies final Pareto pruning for a fair
-    comparison of the recovered front).
-
-    Paper: K. Van Moffaert and A. Nowé, "Multi-objective reinforcement
-    learning using sets of pareto dominating policies," JMLR, vol. 15,
-    no. 1, pp. 3483–3512, 2014.
-    """
 
     def __init__(
             self,
@@ -104,26 +71,11 @@ class PQL(MOAgent):
             seed=None,
             num_weight_divisions=5,
             neighbourhood_size=5,
-            nd_update_freq=1
+            nd_update_freq=1,
+            robust=False,
+            max_nd_size=None,
     ):
-        """Initialise PQL.
 
-        Args:
-            env: The MO-Gymnasium environment.
-            ref_point: Reference point for hypervolume calculation.
-            gamma: Discount factor.
-            initial_epsilon: Initial ε for ε-greedy exploration.
-            epsilon_decay_steps: Steps over which ε decays linearly.
-            final_epsilon: Final ε after decay.
-            seed: Random seed.
-            num_weight_divisions: Number of divisions for weight vector
-                generation (used by the decomposition scorer). The total
-                number of weight vectors W = C(num_objectives +
-                num_weight_divisions - 1, num_weight_divisions).
-            neighbourhood_size: Number of neighbouring weight vectors
-                used by the decomposition scorer. Must be <= W.
-                Smaller values reduce per-step cost; typical value is 5–10.
-        """
         super().__init__(env, seed=seed)
 
         # Learning parameters
@@ -133,6 +85,8 @@ class PQL(MOAgent):
         self.epsilon_decay_steps = epsilon_decay_steps
         self.final_epsilon = final_epsilon
         self.ref_point = ref_point
+        self.robust = robust
+        self.max_nd_size = max_nd_size
 
         # Action space
         if isinstance(self.env.action_space, gym.spaces.Discrete):
@@ -171,6 +125,10 @@ class PQL(MOAgent):
         self.avg_reward = defaultdict(
             lambda: np.zeros((self.num_actions, self.num_objectives))
         )
+        if self.robust:
+            self.reward_samples = defaultdict(
+                lambda: [[] for _ in range(self.num_actions)]
+            )
         self.nd_decomp = defaultdict(
             lambda: [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
         )
@@ -314,6 +272,31 @@ class PQL(MOAgent):
                 np.argwhere(action_scores == np.max(action_scores)).flatten()
             )
 
+    def _subsample_nd(self, nd: set) -> set:
+        """Subsample a non-dominated set to max_nd_size using crowding distance.
+
+        Preserves diversity by retaining the most spread-out vectors —
+        the same criterion used by NSGA-II for truncation within a rank.
+        Applied only when len(nd) > max_nd_size (= len(weights)).
+        """
+        if len(nd) <= self.max_nd_size:
+            return nd
+        arr = np.array(list(nd))
+        n, d = arr.shape
+        crowd = np.zeros(n)
+        for obj in range(d):
+            order = np.argsort(arr[:, obj])
+            crowd[order[0]] = crowd[order[-1]] = np.inf
+            obj_range = arr[order[-1], obj] - arr[order[0], obj]
+            if obj_range == 0:
+                continue
+            for i in range(1, n - 1):
+                crowd[order[i]] += (
+                        (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / obj_range
+                )
+        keep = np.argsort(crowd)[-self.max_nd_size:]
+        return {tuple(arr[i]) for i in keep}
+
     def calc_non_dominated(self, state: int):
         candidates = set().union(*[
             self.get_q_set(state, a)
@@ -324,7 +307,10 @@ class PQL(MOAgent):
             return {tuple(np.zeros(self.num_objectives))}
         if len(candidates) == 1:
             return candidates
-        return get_non_dominated(candidates)
+        nd = get_non_dominated(candidates)
+        if self.robust and self.max_nd_size is not None:
+            return self._subsample_nd(nd)
+        return nd
 
     def calc_decomp_best(self, state: int) -> set:
         """Return the global best-per-weight Q-vector set at a state.
@@ -422,9 +408,15 @@ class PQL(MOAgent):
                     else:
                         self.non_dominated[state][action] = self.calc_non_dominated(next_state)
 
-                self.avg_reward[state][action] += (
-                        (reward - self.avg_reward[state][action]) / self.counts[state][action]
-                )
+                if self.robust:
+                    self.reward_samples[state][action].append(reward.copy())
+                    if self.global_step % self.nd_update_freq == 0:  # batch the recomputation
+                        samples = np.array(self.reward_samples[state][action])
+                        self.avg_reward[state][action] = np.percentile(samples, 20, axis=0)
+                else:
+                    self.avg_reward[state][action] += (
+                            (reward - self.avg_reward[state][action]) / self.counts[state][action]
+                    )
 
                 state = next_state
 
@@ -512,4 +504,6 @@ class PQL(MOAgent):
             "num_weights": len(self.weights),
             "neighbourhood_size": self.neighbourhood_size,
             "nd_update_freq": self.nd_update_freq,
+            "robust": self.robust,
+            "max_nd_size": self.max_nd_size,
         }

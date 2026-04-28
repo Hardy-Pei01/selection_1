@@ -1,22 +1,9 @@
-"""MORL single-scenario runner — mirrors moea/single.py.
-
-``run_morl_single`` is the direct analog of ``moea/moea_multi.py run_moea``:
-it trains one PQL agent on **one** pre-configured environment (one scenario)
-and saves the resulting Pareto Coverage Set (PCS) and convergence log.
-
-The caller (``method_config.morl_single``) is responsible for building the
-environment with the desired slip_prob, exactly as ``moea_multi`` is
-responsible for constructing the ``Scenario`` object before calling
-``single.run_moea``.
-"""
-
 import os
 import time
-
 import numpy as np
 import pandas as pd
-
 from morl.pql import PQL
+from morl.policy_eval import extract_policy
 
 
 def run_morl_single(
@@ -31,37 +18,7 @@ def run_morl_single(
     ref_num=None,
     start_time=None,
 ):
-    """Train one PQL agent on a single scenario environment and save results.
 
-    Direct analog of ``moea/single.py run_moea``:
-    - ``env``       <-> ``model``          (the thing being optimised)
-    - ``scoring``   <-> ``params.algorithm``
-    - ``timesteps`` <-> ``params.nfe``
-    - ``ref_num``   <-> ``ref_num``        (reference-scenario index for labelling)
-    - ``start_time``<-> ``start_time``     (wall-clock elapsed time tracking)
-
-    Output files mirror moea naming:
-      pcs_{file_end}_{ref_num}.csv          <-> archives_{file_end}_{ref_num}.csv
-      convergence_{file_end}_{ref_num}.csv  <-> convergences_{file_end}_{ref_num}.csv
-
-    Args:
-        env: A Gymnasium-compatible MO environment configured for one scenario.
-        scoring: PQL action-evaluation method ('pareto', 'indicator',
-            'decomposition').
-        timesteps: Total training steps (analog of nfe).
-        ref_point: Reference point for hypervolume calculation.
-        num_weight_divisions: Weight-vector grid density (decomposition scorer).
-        neighbourhood_size: Neighbourhood size for decomposition scorer.
-        output_folder: Directory where results are written.
-        file_end: Suffix shared by all output filenames for this experiment.
-        ref_num: Reference-scenario index; appended to filenames and stored as
-            a column in the PCS archive.  None for single (non-param) runs.
-        start_time: time.time() snapshot from the caller; used to record
-            wall-clock elapsed time in the convergence log.
-
-    Returns:
-        pcs_df (pd.DataFrame): The recovered Pareto Coverage Set.
-    """
     os.makedirs(output_folder, exist_ok=True)
 
     agent = PQL(
@@ -103,10 +60,24 @@ def run_morl_single(
             pcs_df['reference_scenario'] = ref_num
 
     # ── Persist ───────────────────────────────────────────────────────────
+    policy_rows = []
+    for pol_id, target_vec in enumerate(pcs):
+        decisions = extract_policy(agent, target_vec)
+        row = {'policy_id': pol_id}
+        row.update({f'l{i}': d for i, d in enumerate(decisions)})
+        policy_rows.append(row)
+
+    policies_df = pd.DataFrame(policy_rows) if policy_rows else pd.DataFrame()
+
+    if ref_num is not None:
+        if not policies_df.empty:
+            policies_df['reference_scenario'] = ref_num
+
     suffix = f'_{ref_num}' if ref_num is not None else ''
+    policies_df.to_csv(f'{output_folder}/policies_{file_end}{suffix}.csv', index=False)
     pcs_df.to_csv(f'{output_folder}/pcs_{file_end}{suffix}.csv', index=False)
     conv_df.to_csv(
         f'{output_folder}/convergence_{file_end}{suffix}.csv', index=False
     )
 
-    return pcs_df
+    return policies_df

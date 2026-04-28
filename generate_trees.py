@@ -136,9 +136,9 @@ def main(
 
 
 if __name__ == "__main__":
-    depth = 9
+    depth = 11
     main(depth=depth, reward_dim=2, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[0])
-    main(depth=depth, reward_dim=4, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[2])
+    # main(depth=depth, reward_dim=4, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[2])
     main(depth=depth, reward_dim=6, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[1])
-    main(depth=depth, reward_dim=8, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[3])
-    main(depth=depth, reward_dim=10, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[4])
+    # main(depth=depth, reward_dim=8, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[3])
+    # main(depth=depth, reward_dim=10, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[4])

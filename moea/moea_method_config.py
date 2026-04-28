@@ -1,5 +1,5 @@
-from params_config import (default_tree_scenario, default_lake_scenario,
-                           tree_multi_obj, tree_many_obj)
+from params_config import (default_tree_scenario, default_tree_scenario_robust,
+                           default_lake_scenario, tree_multi_obj, tree_many_obj)
 import moea.moea_multi as multi
 import moea.moea_moro as moro
 from ema_workbench import (Scenario)
@@ -36,10 +36,10 @@ class multi_tree_params(base_tree_params):
         super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
 
         self.references = [
-            {'slip_prob': 0.05},
-            {'slip_prob': 0.1},
-            {'slip_prob': 0.15},
-            {'slip_prob': 0.2},
+            {'scenario_index': 12},
+            {'scenario_index': 24},
+            {'scenario_index': 37},
+            {'scenario_index': 49},
         ]
 
 
@@ -54,7 +54,7 @@ class base_lake_params(base_params):
         if many_obj:
             self.epsilons = [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # 6 objectives
         else:
-            self.epsilons = [0.1, 0.01]  # 2 objectives
+            self.epsilons = [0.01, 0.01]  # 2 objectives
 
 
 class multi_lake_params(base_lake_params):
@@ -89,10 +89,13 @@ def moea_multi(model, params, start_time, problem):
     convergences = []
 
     base = default_tree_scenario if problem == 'tree' else default_lake_scenario
+    base_robust = default_tree_scenario_robust if problem == 'tree' else default_lake_scenario
+
     if not params.robust:
         refs = [base]
     else:
-        refs = params.references + [base]
+        refs = params.references + [base_robust]
+
     for idx, ref in enumerate(refs):
         print('Reference scenario', idx)
         file_end = output_file_end(model, params)
