@@ -25,14 +25,14 @@ def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
 
     env = FruitTreeEnv(depth=depth, reward_dim=num_obj,
                        csv_path=csv_path, observe=bool(observe))
-    env.reset(SEED)
+    obs, _ = env.reset(SEED)
 
     total_reward = np.zeros(num_obj)
     for _ in range(depth):
-        level, pos = env.current_state
+        level, pos = obs
         node_id = int(2 ** level - 1) + pos
         action = table[node_id]
-        _, reward, terminal, _, _ = env.step(action)
+        obs, reward, terminal, _, _ = env.step(action)
         total_reward += reward
         if terminal:
             break
@@ -65,13 +65,13 @@ def fruit_tree_table_robust(depth, num_obj, csv_path, observe,
                        observe=bool(observe),
                        scenario_index=int(scenario_index),
                        slip_patterns_path=slip_patterns_path)
-    env.reset()
+    obs, _ = env.reset()
     total_reward = np.zeros(num_obj)
     for _ in range(depth):
-        level, pos = env.current_state
+        level, pos = obs
         node_id = int(2 ** level - 1) + pos
         action = table[node_id]
-        _, reward, terminal, _, _ = env.step(action)
+        obs, reward, terminal, _, _ = env.step(action)
         total_reward += reward
         if terminal:
             break

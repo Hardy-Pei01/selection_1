@@ -1,5 +1,5 @@
 from ema_workbench import ema_logging
-from params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_many_obj
+from params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_multi_obj, tree_many_obj
 from moea.moea_method_config import multi_tree_params, moro_tree_params, moea_moro, moea_multi
 from moea.model_builder import (inter_tree_model, inter_robust_tree_model, table_tree_model,
                                 table_robust_tree_model, table_many_objs_partially_observable_tree_model,
@@ -8,10 +8,10 @@ from collections import defaultdict
 import time
 
 activate_logging = 1
-root_folder = f'./data_{tree_depth}_vary'
+root_folder = f'./data_{tree_depth}_3'
 
 run_policy = {
-    'intertemporal': 1,
+    'intertemporal': 0,
     'table': 1
 }
 run_evo_method = {
@@ -36,8 +36,8 @@ param_uncertain = {
 }
 
 observability = {
-    'observable': 1,
-    'non_observable': 0
+    'observable': 0,
+    'non_observable': 1
 }
 
 
@@ -72,6 +72,11 @@ model_settings['table']['multi_obj']['deterministic']['non_observable'] = (
     table_multi_objs_partially_observable_tree_model, 'tableMultiNonObs')
 model_settings['table']['many_obj']['deterministic']['non_observable'] = (
     table_many_objs_partially_observable_tree_model, 'tableManyNonObs')
+
+num_objectives = {
+    'multi_obj': tree_multi_obj,
+    'many_obj': tree_many_obj,
+}
 
 if __name__ == '__main__':
     if (activate_logging):
@@ -115,16 +120,16 @@ if __name__ == '__main__':
                                     key_5 == 'deterministic'):
                                 continue
 
-                            name = f'{key_1}_{key_2}_{key_3}_{key_4}_{key_6}'
+                            num_obj = num_objectives[key_4]
+                            name = f'{key_1}_{key_2}_{key_3}_{num_obj}_{key_6}'
                             nfe = nfe_settings[key_1][key_3][key_4][key_5]
                             print('--------------------------------------------------------------------')
-                            print(f"This experiment is {name}")
+                            print(f"This experiment is {name}, with depth={tree_depth}, num_obj={num_obj}")
                             print('--------------------------------------------------------------------')
 
                             robust = (key_5 == 'robust')
                             many_obj = (key_4 == 'many_obj')
                             model_params = many_objs_tree_params if many_obj else multi_objs_tree_params
-                            scenarios = None
 
                             model_func, model_name = model_settings[key_1][key_4][key_5][key_6]
                             model = model_func(model_params, model_name)
@@ -133,10 +138,10 @@ if __name__ == '__main__':
                             if key_3 == "moro":
                                 method_params = moro_tree_params(name=name, nfe=nfe, algo=key_2,
                                                                  root_folder=root_folder, many_obj=many_obj,
-                                                                 robust=robust, scenarios=scenarios)
+                                                                 robust=robust)
                                 moea_moro(model, method_params, start_time, problem='tree')
                             else:
                                 method_params = multi_tree_params(name=name, nfe=nfe, algo=key_2,
                                                                   root_folder=root_folder, many_obj=many_obj,
-                                                                  robust=robust, scenarios=scenarios)
+                                                                  robust=robust)
                                 moea_multi(model, method_params, start_time, problem='tree')

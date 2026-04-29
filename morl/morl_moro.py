@@ -3,15 +3,14 @@ import re
 import time
 import numpy as np
 import pandas as pd
-from scipy.optimize import brentq
 from fruit_tree import FruitTreeEnv
 from two_lake import TwoLakeEnv
 from morl.pql import PQL
-from policy_eval import extract_policy, extract_lake_policy,\
-    evaluate_policies_across_scenarios, compute_robustness, \
+from policy_eval import extract_policy, extract_lake_policy, \
+    evaluate_tree_policies_across_scenarios, compute_robustness, \
     evaluate_lake_policies_across_scenarios
-from params_config import slip_patterns_path, nd_size_cap, \
-    lake_scenarios_path, nd_size_cap_lake
+from params_config import slip_patterns_path, nd_size_cap_tree, \
+    lake_scenarios_path, nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake
 
 
 class MoroFruitTreeEnv(FruitTreeEnv):
@@ -37,36 +36,37 @@ class MoroLakeEnv(TwoLakeEnv):
         self._scenario_rng = np.random.default_rng(seed)
         # Initialise with first scenario
         s = scenarios[0]
+        self._current_idx = -1
         super().__init__(
             b1=float(s['b1']), q1=float(s['q1']),
             b2=float(s['b2']), q2=float(s['q2']),
             inflow_seed1=int(s['inflow_seed1']),
             inflow_seed2=int(s['inflow_seed2']),
+            Pcrit1=float(s['Pcrit1']),
+            Pcrit2=float(s['Pcrit2']),
             num_obj=n_obj,
+            rl=True
         )
 
     def reset(self, *, seed=None, options=None):
         idx = int(self._scenario_rng.integers(len(self._scenarios)))
-        s = self._scenarios[idx]
-        self.b1, self.q1 = float(s['b1']), float(s['q1'])
-        self.b2, self.q2 = float(s['b2']), float(s['q2'])
-        self.inflow_seed1 = int(s['inflow_seed1'])
-        self.inflow_seed2 = int(s['inflow_seed2'])
-        inflow_rng1 = np.random.default_rng(self.inflow_seed1)
-        self._inflows1 = inflow_rng1.lognormal(
-            self._ln_mean, self._ln_sigma, size=self.total_years)
-        inflow_rng2 = np.random.default_rng(self.inflow_seed2)
-        self._inflows2 = inflow_rng2.lognormal(
-            self._ln_mean, self._ln_sigma, size=self.total_years)
 
-        if 'Pcrit1' in s.dtype.names:
+        # Only regenerate inflows and Pcrit when scenario actually changes
+        if idx != self._current_idx:
+            self._current_idx = idx
+            s = self._scenarios[idx]
+            self.b1, self.q1 = float(s['b1']), float(s['q1'])
+            self.b2, self.q2 = float(s['b2']), float(s['q2'])
+            self.inflow_seed1 = int(s['inflow_seed1'])
+            self.inflow_seed2 = int(s['inflow_seed2'])
+            inflow_rng1 = np.random.default_rng(self.inflow_seed1)
+            self._inflows1 = inflow_rng1.lognormal(
+                self._ln_mean, self._ln_sigma, size=self.total_years)
+            inflow_rng2 = np.random.default_rng(self.inflow_seed2)
+            self._inflows2 = inflow_rng2.lognormal(
+                self._ln_mean, self._ln_sigma, size=self.total_years)
             self.Pcrit1 = float(s['Pcrit1'])
             self.Pcrit2 = float(s['Pcrit2'])
-        else:
-            self.Pcrit1 = brentq(
-                lambda x: x ** self.q1 / (1 + x ** self.q1) - self.b1 * x, 0.01, 1.5)
-            self.Pcrit2 = brentq(
-                lambda x: x ** self.q2 / (1 + x ** self.q2) - self.b2 * x, 0.01, 1.5)
 
         return super().reset(seed=seed, options=options)
 
@@ -111,9 +111,9 @@ def run_moro(
         final_epsilon=0.05,
         num_weight_divisions=num_weight_divisions,
         neighbourhood_size=neighbourhood_size,
-        nd_update_freq=1,
+        nd_update_freq=nd_update_freq_tree,
         robust=True,
-        max_nd_size=nd_size_cap
+        max_nd_size=nd_size_cap_tree
     )
 
     pcs, conv_log = agent.train(
@@ -121,16 +121,6 @@ def run_moro(
         action_eval=scoring,
         log_every=max(1, timesteps // 100),
     )
-
-    # ── Build PCS dataframe ───────────────────────────────────────────────
-    # if pcs:
-    #     pcs_arr = np.array([list(v) for v in pcs])
-    #     pcs_df = pd.DataFrame(
-    #         pcs_arr,
-    #         columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])],
-    #     )
-    # else:
-    #     pcs_df = pd.DataFrame()
 
     # ── Build convergence dataframe ───────────────────────────────────────
     conv_df = pd.DataFrame(conv_log)
@@ -151,7 +141,7 @@ def run_moro(
         slip_patterns_path=slip_patterns_path,
     )
 
-    eval_df = evaluate_policies_across_scenarios(
+    eval_df = evaluate_tree_policies_across_scenarios(
         agent=agent,
         env_factory=env_factory,
         n_scenarios=n_scenarios,
@@ -184,24 +174,18 @@ def run_moro_lake(
     env = MoroLakeEnv(n_obj=n_obj, scenarios_path=lake_scenarios_path)
 
     agent = PQL(
-        env=env, ref_point=ref_point, gamma=0.98,
+        env=env, ref_point=ref_point, gamma=1.0,
         initial_epsilon=1.0, epsilon_decay_steps=timesteps,
         final_epsilon=0.05, num_weight_divisions=num_weight_divisions,
         neighbourhood_size=neighbourhood_size,
-        nd_update_freq=1, robust=True, max_nd_size=nd_size_cap_lake,
+        nd_update_freq=nd_update_freq_lake, robust=True,
+        max_nd_size=nd_size_cap_lake
     )
 
     pcs, conv_log = agent.train(
         total_timesteps=timesteps, action_eval=scoring,
         log_every=max(1, timesteps // 100),
     )
-
-    # if pcs:
-    #     pcs_arr = np.array([list(v) for v in pcs])
-    #     pcs_df = pd.DataFrame(pcs_arr,
-    #                           columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])])
-    # else:
-    #     pcs_df = pd.DataFrame()
 
     conv_df = pd.DataFrame(conv_log)
     if start_time is not None:
@@ -218,7 +202,10 @@ def run_moro_lake(
             b2=float(s['b2']), q2=float(s['q2']),
             inflow_seed1=int(s['inflow_seed1']),
             inflow_seed2=int(s['inflow_seed2']),
+            Pcrit1=float(s['Pcrit1']),
+            Pcrit2=float(s['Pcrit2']),
             num_obj=n_obj,
+            rl=True
         )
 
     # Multi-scenario robust re-evaluation — mirrors run_moro for tree

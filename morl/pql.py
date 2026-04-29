@@ -308,7 +308,7 @@ class PQL(MOAgent):
         if len(candidates) == 1:
             return candidates
         nd = get_non_dominated(candidates)
-        if self.robust and self.max_nd_size is not None:
+        if self.max_nd_size is not None:
             return self._subsample_nd(nd)
         return nd
 

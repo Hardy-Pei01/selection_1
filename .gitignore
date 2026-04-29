@@ -5,3 +5,5 @@ __pycache__
 *.zip
 .DS_Store
 *.png
+tree_data/
+previous_fruits/

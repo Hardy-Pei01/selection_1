@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 from params_config import (default_tree_scenario, default_tree_scenario_robust,
                            default_lake_scenario, tree_multi_obj, tree_many_obj,
-                           tree_n_scenarios)
+                           tree_n_scenarios, tree_reference_scenarios,
+                           lake_reference_scenarios)
 import moea.moea_single as multi
 import moea.moea_moro as moro
 from ema_workbench import (Scenario)
@@ -14,7 +15,7 @@ from count_non_dominated import is_nondominated
 
 
 class base_params(object):
-    def __init__(self, name, nfe, algo, root_folder, robust, scenarios):
+    def __init__(self, name, nfe, algo, root_folder, robust):
         self.name = name
         self.nfe = nfe
         self.algo_name = algo
@@ -26,12 +27,11 @@ class base_params(object):
             self.algorithm = MOEAD
         self.output_folder = f'{root_folder}/{name}'
         self.robust = robust
-        self.scenarios = scenarios
 
 
 class base_tree_params(base_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, robust)
         if many_obj:
             self.epsilons = [0.001] * tree_many_obj
         else:
@@ -39,25 +39,20 @@ class base_tree_params(base_params):
 
 
 class multi_tree_params(base_tree_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
 
-        self.references = [
-            {'scenario_index': 12},
-            {'scenario_index': 24},
-            {'scenario_index': 37},
-            {'scenario_index': 49},
-        ]
+        self.references = tree_reference_scenarios
 
 
 class moro_tree_params(base_tree_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
 
 
 class base_lake_params(base_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, robust)
         if many_obj:
             self.epsilons = [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # 6 objectives
         else:
@@ -65,26 +60,17 @@ class base_lake_params(base_params):
 
 
 class multi_lake_params(base_lake_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
         # Reference scenarios spanning the (b, q) uncertainty space.
         # Each combines a (b1,q1,b2,q2) configuration with fixed inflow seeds
         # so evaluations are fully deterministic within each reference.
-        self.references = [
-            {'b1': 0.10, 'q1': 2.0, 'b2': 0.10, 'q2': 2.0,
-             'inflow_seed1': 1, 'inflow_seed2': 2},  # low b, low q — forgiving
-            {'b1': 0.45, 'q1': 4.5, 'b2': 0.45, 'q2': 4.5,
-             'inflow_seed1': 3, 'inflow_seed2': 4},  # high b, high q — sharp tipping
-            {'b1': 0.42, 'q1': 2.0, 'b2': 0.35, 'q2': 2.5,
-             'inflow_seed1': 5, 'inflow_seed2': 6},  # default parameters
-            {'b1': 0.10, 'q1': 4.5, 'b2': 0.45, 'q2': 2.0,
-             'inflow_seed1': 7, 'inflow_seed2': 8},  # mixed extremes
-        ]
+        self.references = lake_reference_scenarios
 
 
 class moro_lake_params(base_lake_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, scenarios):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust, scenarios)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
 
 
 def output_file_end(model, params):
@@ -123,7 +109,7 @@ def moea_multi(model, params, start_time, problem):
             # Pareto-prune the pooled set
 
             rewards = combined[obj_cols].values
-            nd_mask = is_nondominated(np.abs(rewards))
+            nd_mask = is_nondominated(-rewards)
             combined = combined[nd_mask].reset_index(drop=True)
             file_end = output_file_end(model, params)
             combined.to_csv(

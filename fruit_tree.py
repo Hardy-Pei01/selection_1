@@ -67,7 +67,8 @@ class FruitTreeEnv(gym.Env):
             self.terminal = True
 
         obs = (self.current_state.copy() if self.observe
-               else np.array([self.current_state[0], 0], dtype=np.int32))
+               else np.array([0, self.current_state[1]],
+                             dtype=np.int32))
         return obs, reward, self.terminal, False, {}
 
     @property

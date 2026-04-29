@@ -11,7 +11,7 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
 
-    with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
+    with SequentialEvaluator(model) as evaluator:
         arch, conv = evaluator.optimize(
             algorithm=params.algorithm,
             nfe=params.nfe,

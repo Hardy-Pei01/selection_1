@@ -5,7 +5,8 @@ import morl.morl_moro as moro
 from fruit_tree import FruitTreeEnv
 from two_lake import TwoLakeEnv
 from params_config import default_tree_scenario, default_tree_scenario_robust, \
-    slip_patterns_path, default_lake_scenario
+    slip_patterns_path, default_lake_scenario, tree_reference_scenarios, \
+    lake_reference_scenarios
 
 
 class base_morl_params:
@@ -37,12 +38,7 @@ class multi_tree_morl_params(base_tree_morl_params):
         super().__init__(name, timesteps, scoring, root_folder,
                          many_obj, robust, num_weight_divisions, neighbourhood_size)
 
-        self.references = [
-            {'scenario_index': 12},
-            {'scenario_index': 24},
-            {'scenario_index': 37},
-            {'scenario_index': 49},
-        ]
+        self.references = tree_reference_scenarios
 
 
 class moro_tree_morl_params(base_tree_morl_params):
@@ -70,16 +66,7 @@ class multi_lake_morl_params(base_lake_morl_params):
         super().__init__(name, timesteps, scoring, root_folder,
                          many_obj, robust, num_weight_divisions, neighbourhood_size)
 
-        self.references = [
-            {'b1': 0.10, 'q1': 2.0, 'b2': 0.10, 'q2': 2.0,
-             'inflow_seed1': 1, 'inflow_seed2': 2},  # low b, low q — forgiving
-            {'b1': 0.45, 'q1': 4.5, 'b2': 0.45, 'q2': 4.5,
-             'inflow_seed1': 3, 'inflow_seed2': 4},  # high b, high q — sharp tipping
-            {'b1': 0.42, 'q1': 2.0, 'b2': 0.35, 'q2': 2.5,
-             'inflow_seed1': 5, 'inflow_seed2': 6},  # default parameters
-            {'b1': 0.10, 'q1': 4.5, 'b2': 0.45, 'q2': 2.0,
-             'inflow_seed1': 7, 'inflow_seed2': 8},  # mixed extremes
-        ]
+        self.references = lake_reference_scenarios
 
 
 class moro_lake_morl_params(base_lake_morl_params):
@@ -102,7 +89,10 @@ def _build_lake_env(ref, n_obj):
         b2=ref.get('b2', 0.35), q2=ref.get('q2', 2.5),
         inflow_seed1=ref.get('inflow_seed1', 0),
         inflow_seed2=ref.get('inflow_seed2', 0),
+        Pcrit1=ref.get('Pcrit1', None),
+        Pcrit2=ref.get('Pcrit2', None),
         num_obj=n_obj,
+        rl=True
     )
 
 

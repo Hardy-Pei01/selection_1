@@ -75,7 +75,7 @@ def extract_lake_policy(agent, target_vec, env):
     return decisions
 
 
-def evaluate_policies_across_scenarios(agent, env_factory, n_scenarios):
+def evaluate_tree_policies_across_scenarios(agent, env_factory, n_scenarios):
 
     n_obj = agent.num_objectives
     rows = []

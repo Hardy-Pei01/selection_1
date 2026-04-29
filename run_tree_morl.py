@@ -77,42 +77,42 @@ num_objectives = {
 
 if __name__ == '__main__':
 
-    for key_scoring, val_scoring in run_scoring.items():
-        if not val_scoring:
+    for key_1, val_1 in run_scoring.items():
+        if not val_1:
             continue
 
         for key_3, val_3 in run_scenario_method.items():
             if not val_3:
                 continue
 
-            for key_obj, val_obj in obj_uncertain.items():
-                if not val_obj:
+            for key_4, val_4 in obj_uncertain.items():
+                if not val_4:
                     continue
 
-                for key_param, val_param in param_uncertain.items():
-                    if not val_param:
+                for key_5, val_5 in param_uncertain.items():
+                    if not val_5:
                         continue
 
                     # Enforce valid (scenario_method, uncertainty) combinations —
                     # mirrors the same guards in run_tree_moea.py.
-                    if key_3 == 'single' and key_param == 'robust':
+                    if key_3 == 'single' and key_5 == 'robust':
                         continue  # single only makes sense without param uncertainty
-                    if key_3 in ('multi', 'moro') and key_param == 'deterministic':
+                    if key_3 in ('multi', 'moro') and key_5 == 'deterministic':
                         continue  # multi/moro require param uncertainty
 
-                    name = f'{key_scoring}_{key_3}_{key_obj}'
-                    timesteps = timestep_settings[key_3][key_obj][key_param]
-                    n_obj = num_objectives[key_obj]
-                    csv = csv_paths[key_obj]
-                    ref = ref_points[key_obj]
-                    nwd = num_weight_divisions[key_obj]
+                    timesteps = timestep_settings[key_3][key_4][key_5]
+                    n_obj = num_objectives[key_4]
+                    csv = csv_paths[key_4]
+                    ref = ref_points[key_4]
+                    nwd = num_weight_divisions[key_4]
+                    name = f'{key_1}_{key_3}_{n_obj}'
 
                     print('--------------------------------------------------------------------')
-                    print(f'This experiment is {name}')
+                    print(f"This experiment is {name}, with depth={tree_depth}, num_obj={n_obj}")
                     print('--------------------------------------------------------------------')
 
                     # robust=0 for 'single' (non_param), 1 for 'multi'/'moro' (param)
-                    robust = (key_param == 'robust')
+                    robust = (key_5 == 'robust')
 
                     start_time = time.time()
 
@@ -121,9 +121,9 @@ if __name__ == '__main__':
                         params = moro_tree_morl_params(
                             name=name,
                             timesteps=timesteps,
-                            scoring=key_scoring,
+                            scoring=key_1,
                             root_folder=root_folder,
-                            many_obj=(key_obj == 'many_obj'),
+                            many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
                             neighbourhood_size=neighbourhood_size,
@@ -141,9 +141,9 @@ if __name__ == '__main__':
                         params = multi_tree_morl_params(
                             name=name,
                             timesteps=timesteps,
-                            scoring=key_scoring,
+                            scoring=key_1,
                             root_folder=root_folder,
-                            many_obj=(key_obj == 'many_obj'),
+                            many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
                             neighbourhood_size=neighbourhood_size,

@@ -52,7 +52,7 @@ def two_lake_dps(num_obj, alpha, delta, total_years, years_per_action, **kwargs)
 
     total_rewards = np.zeros(num_obj, dtype=np.float32)
     for _ in range(env.n_gym_steps):
-        X1, X2 = env._X1, env._X2
+        X1, X2 = env.X1, env.X2
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
         _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))
@@ -63,7 +63,8 @@ def two_lake_dps(num_obj, alpha, delta, total_years, years_per_action, **kwargs)
 
 def two_lake_inter_robust(num_obj, alpha, delta, total_years, years_per_action,
                           b1=0.42, q1=2.0, b2=0.35, q2=2.5,
-                          inflow_seed1=None, inflow_seed2=None, **kwargs):
+                          inflow_seed1=None, inflow_seed2=None,
+                          Pcrit1=None, Pcrit2=None, **kwargs):
     n_steps = total_years // years_per_action
     env = TwoLakeEnv(
         b1=b1, q1=q1, b2=b2, q2=q2,
@@ -72,6 +73,8 @@ def two_lake_inter_robust(num_obj, alpha, delta, total_years, years_per_action,
         years_per_action=years_per_action,
         inflow_seed1=inflow_seed1,
         inflow_seed2=inflow_seed2,
+        Pcrit1=Pcrit1,
+        Pcrit2=Pcrit2,
         num_obj=num_obj,
     )
     actions = [(kwargs[f'u1_{i}'], kwargs[f'u2_{i}']) for i in range(n_steps)]
@@ -80,7 +83,8 @@ def two_lake_inter_robust(num_obj, alpha, delta, total_years, years_per_action,
 
 def two_lake_dps_robust(num_obj, alpha, delta, total_years, years_per_action,
                         b1=0.42, q1=2.0, b2=0.35, q2=2.5,
-                        inflow_seed1=None, inflow_seed2=None, **kwargs):
+                        inflow_seed1=None, inflow_seed2=None,
+                        Pcrit1=None, Pcrit2=None, **kwargs):
     env = TwoLakeEnv(
         b1=b1, q1=q1, b2=b2, q2=q2,
         alpha=alpha, delta=delta,
@@ -88,6 +92,8 @@ def two_lake_dps_robust(num_obj, alpha, delta, total_years, years_per_action,
         years_per_action=years_per_action,
         inflow_seed1=inflow_seed1,
         inflow_seed2=inflow_seed2,
+        Pcrit1=Pcrit1,
+        Pcrit2=Pcrit2,
         num_obj=num_obj,
     )
     env.reset()
@@ -102,7 +108,7 @@ def two_lake_dps_robust(num_obj, alpha, delta, total_years, years_per_action,
 
     total_rewards = np.zeros(num_obj, dtype=np.float32)
     for _ in range(env.n_gym_steps):
-        X1, X2 = env._X1, env._X2
+        X1, X2 = env.X1, env.X2
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
         _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))

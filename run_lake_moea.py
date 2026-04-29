@@ -1,37 +1,38 @@
 from ema_workbench import ema_logging
-from params_config import multi_objs_lake_params, many_objs_lake_params
+from params_config import (multi_objs_lake_params, many_objs_lake_params, lake_multi_obj,
+                           lake_many_obj)
 from moea.moea_method_config import multi_lake_params, moro_lake_params, moea_moro, moea_multi
 from moea.model_builder import (inter_lake_model, inter_robust_lake_model, dps_lake_model,
                                 dps_robust_lake_model)
 from collections import defaultdict
 import time
 
-activate_logging = True
-root_folder = f'./data_lake_original'
+activate_logging = 1
+root_folder = f'./lake'
 
 run_policy = {
-    'intertemporal': True,
-    'dps': True
+    'intertemporal': 1,
+    'dps': 1
 }
 run_evo_method = {
-    'NSGAII': True,
-    'IBEA': False,
-    'MOEAD': False
+    'NSGAII': 1,
+    'IBEA': 1,
+    'MOEAD': 1
 }
 run_scenario_method = {
-    'single': True,
-    'multi': False,
-    'moro': False
+    'single': 0,
+    'multi': 0,
+    'moro': 1
 }
 
 obj_uncertain = {
-    'multi_obj': True,
-    'many_obj': True
+    'multi_obj': 1,
+    'many_obj': 1
 }
 
 param_uncertain = {
-    'deterministic': True,
-    'robust': False
+    'deterministic': 0,
+    'robust': 1
 }
 
 
@@ -63,6 +64,11 @@ model_settings['dps']['many_obj']['deterministic'] = (dps_lake_model, 'dpsMany')
 model_settings['dps']['multi_obj']['robust'] = (dps_robust_lake_model, 'dpsMultiRobust')
 model_settings['dps']['many_obj']['robust'] = (dps_robust_lake_model, 'dpsManyRobust')
 
+num_objectives = {
+    'multi_obj': lake_multi_obj,
+    'many_obj': lake_many_obj,
+}
+
 if __name__ == '__main__':
     if activate_logging:
         ema_logging.log_to_stderr(ema_logging.INFO)
@@ -87,38 +93,27 @@ if __name__ == '__main__':
                         if not value_5:
                             continue
 
-                        name = f'{key_1}_{key_2}_{key_3}_{key_4}_{key_5}'
+                        num_obj = num_objectives[key_4]
+                        name = f'{key_1}_{key_2}_{key_3}_{num_obj}'
                         nfe = nfe_settings[key_1][key_3][key_4][key_5]
                         print('--------------------------------------------------------------------')
                         print(f"This experiment is {name}")
                         print('--------------------------------------------------------------------')
 
-                        if key_5 == 'deterministic':
-                            robust = False
-                            scenarios = None
-                        elif key_5 == 'robust':
-                            robust = True
-                            scenarios = None
-                        else:
-                            raise Exception
-                        if key_4 == "multi_obj":
-                            model_params = multi_objs_lake_params
-                            many_obj = False
-                        elif key_4 == "many_obj":
-                            model_params = many_objs_lake_params
-                            many_obj = True
-                        else:
-                            raise Exception
+                        robust = (key_5 == 'robust')
+                        many_obj = (key_4 == 'many_obj')
+                        model_params = many_objs_lake_params if many_obj else multi_objs_lake_params
                         model_func, model_name = model_settings[key_1][key_4][key_5]
                         model = model_func(model_params, model_name)
+
                         start_time = time.time()
                         if key_3 == "moro":
                             method_params = moro_lake_params(name=name, nfe=nfe, algo=key_2,
                                                              root_folder=root_folder, many_obj=many_obj,
-                                                             robust=robust, scenarios=scenarios)
+                                                             robust=robust)
                             moea_moro(model, method_params, start_time, problem='lake')
                         else:
                             method_params = multi_lake_params(name=name, nfe=nfe, algo=key_2,
                                                               root_folder=root_folder, many_obj=many_obj,
-                                                              robust=robust, scenarios=scenarios)
+                                                              robust=robust)
                             moea_multi(model, method_params, start_time, problem='lake')

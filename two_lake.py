@@ -3,6 +3,7 @@ import gymnasium as gym
 from scipy.optimize import brentq
 
 LAKE_BINS = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 4.0, 12.0])
+REDUCED_EMISSIONS = np.array([0.00, 0.02, 0.04, 0.06, 0.08, 0.10])
 
 
 class TwoLakeEnv(gym.Env):
@@ -28,7 +29,10 @@ class TwoLakeEnv(gym.Env):
             # independent of the episode seed passed to reset()
             inflow_seed1=0,
             inflow_seed2=0,
-            num_obj=2
+            Pcrit1=None,
+            Pcrit2=None,
+            num_obj=2,
+            rl=False
     ):
         super().__init__()
 
@@ -54,12 +58,13 @@ class TwoLakeEnv(gym.Env):
         self.inflow_seed1 = inflow_seed1
         self.inflow_seed2 = inflow_seed2
         self.num_obj = num_obj
+        self.rl = rl
 
         # --- Critical thresholds (solved once at construction) ---
-        self.Pcrit1 = brentq(
-            lambda x: x ** q1 / (1 + x ** q1) - b1 * x, 0.01, 1.5)
-        self.Pcrit2 = brentq(
-            lambda x: x ** q2 / (1 + x ** q2) - b2 * x, 0.01, 1.5)
+        self.Pcrit1 = Pcrit1 if Pcrit1 is not None else \
+            brentq(lambda x: x ** self.q1 / (1 + x ** self.q1) - self.b1 * x, 0.01, 1.5)
+        self.Pcrit2 = Pcrit2 if Pcrit2 is not None else \
+            brentq(lambda x: x ** self.q2 / (1 + x ** self.q2) - self.b2 * x, 0.01, 1.5)
 
         # --- Natural inflows — generated once at construction using seed ---
         # These are fixed across all episodes; only the policy decisions vary.
@@ -72,7 +77,10 @@ class TwoLakeEnv(gym.Env):
 
         # --- Spaces ---
         # Actions: emission level for each lake, held for years_per_action years
-        self.action_space = gym.spaces.MultiDiscrete([11, 11])
+        if self.rl:
+            self.action_space = gym.spaces.MultiDiscrete([6, 6])
+        else:
+            self.action_space = gym.spaces.MultiDiscrete([11, 11])
 
         # Observations: [P_lake1, P_lake2]
         n_bins = len(LAKE_BINS) - 1
@@ -90,13 +98,13 @@ class TwoLakeEnv(gym.Env):
         )
 
         # Internal state (initialised in reset)
-        self._X1 = None
-        self._X2 = None
-        self._gym_step = None
+        self.X1 = None
+        self.X2 = None
+        self.gym_step = None
         # nan sentinel — inertia is not counted for the first gym step,
         # matching EMA workbench where np.diff starts from decisions[1]-decisions[0]
-        self._prev_u1 = np.nan
-        self._prev_u2 = np.nan
+        self.prev_u1 = np.nan
+        self.prev_u2 = np.nan
 
     # ------------------------------------------------------------------
     # Gymnasium API
@@ -104,28 +112,32 @@ class TwoLakeEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self._X1 = 0.0
-        self._X2 = 0.1
-        self._gym_step = 0
-        self._prev_u1 = np.nan
-        self._prev_u2 = np.nan
+        self.X1 = 0.0
+        self.X2 = 0.1
+        self.gym_step = 0
+        self.prev_u1 = np.nan
+        self.prev_u2 = np.nan
 
         return self._obs(), {}
 
     def step(self, action):
-        u1 = action[0] / 100
-        u2 = action[1] / 100
+        if self.rl:
+            u1 = REDUCED_EMISSIONS[action[0]]
+            u2 = REDUCED_EMISSIONS[action[1]]
+        else:
+            u1 = action[0] / 100
+            u2 = action[1] / 100
 
         # --- Simulate years_per_action years of lake dynamics ---
         X1_traj, X2_traj, X1_new, X2_new = self._simulate(u1, u2)
 
         # --- Update internal state ---
-        self._X1 = float(X1_new)
-        self._X2 = float(X2_new)
+        self.X1 = float(X1_new)
+        self.X2 = float(X2_new)
 
         # --- Compute 6 objectives ---
         # Absolute year indices for discounting
-        year_start = self._gym_step * self.years_per_action
+        year_start = self.gym_step * self.years_per_action
         years = np.arange(year_start, year_start + self.years_per_action)
         discount = np.power(self.delta, years)
 
@@ -133,9 +145,9 @@ class TwoLakeEnv(gym.Env):
         utility2 = float(np.sum(self.alpha * u2 * discount))
         reliability1 = (float(np.mean(X1_traj < self.Pcrit1)) * self.years_per_action / self.total_years)
         reliability2 = (float(np.mean(X2_traj < self.Pcrit2)) * self.years_per_action / self.total_years)
-        inertia1 = (float(not np.isnan(self._prev_u1) and abs(u1 - self._prev_u1) > 0.02)
+        inertia1 = (float(not np.isnan(self.prev_u1) and abs(u1 - self.prev_u1) >= 0.02)
                     * self.years_per_action / self.total_years)
-        inertia2 = (float(not np.isnan(self._prev_u2) and abs(u2 - self._prev_u2) > 0.02)
+        inertia2 = (float(not np.isnan(self.prev_u2) and abs(u2 - self.prev_u2) >= 0.02)
                     * self.years_per_action / self.total_years)
 
         # Reward vector — sign convention: positive = better for the agent
@@ -150,11 +162,11 @@ class TwoLakeEnv(gym.Env):
         ], dtype=np.float32)
 
         # --- Advance step counter ---
-        self._prev_u1 = u1
-        self._prev_u2 = u2
-        self._gym_step += 1
+        self.prev_u1 = u1
+        self.prev_u2 = u2
+        self.gym_step += 1
 
-        terminated = self._gym_step >= self.n_gym_steps
+        terminated = self.gym_step >= self.n_gym_steps
 
         if self.num_obj == 2:
             rewards = rewards[[0, 2]]  # -utility1, -reliability1
@@ -168,8 +180,8 @@ class TwoLakeEnv(gym.Env):
     def _obs(self) -> np.ndarray:
         """Discretized observation — bins (X1, X2) into LAKE_BINS for tabular MORL."""
         n_bins = len(LAKE_BINS) - 1
-        x1_bin = int(np.clip(np.digitize(self._X1, LAKE_BINS) - 1, 0, n_bins - 1))
-        x2_bin = int(np.clip(np.digitize(self._X2, LAKE_BINS) - 1, 0, n_bins - 1))
+        x1_bin = int(np.clip(np.digitize(self.X1, LAKE_BINS) - 1, 0, n_bins - 1))
+        x2_bin = int(np.clip(np.digitize(self.X2, LAKE_BINS) - 1, 0, n_bins - 1))
         return np.array([x1_bin, x2_bin], dtype=np.int32)
 
     def _simulate(self, u1: float, u2: float):
@@ -177,7 +189,7 @@ class TwoLakeEnv(gym.Env):
         Run years_per_action steps of both lake dynamics, reading
         pre-computed inflows from the episode arrays.
         """
-        year_start = self._gym_step * self.years_per_action
+        year_start = self.gym_step * self.years_per_action
         inflows1 = self._inflows1[year_start:year_start + self.years_per_action]
         inflows2 = self._inflows2[year_start:year_start + self.years_per_action]
 
@@ -185,7 +197,7 @@ class TwoLakeEnv(gym.Env):
         X1_traj = np.empty(n)
         X2_traj = np.empty(n)
 
-        X1, X2 = self._X1, self._X2
+        X1, X2 = self.X1, self.X2
         b1, q1 = self.b1, self.q1
         b2, q2 = self.b2, self.q2
 

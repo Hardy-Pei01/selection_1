@@ -35,7 +35,9 @@ def build_optimization_scenarios(problem):
                          b1=float(s['b1']), q1=float(s['q1']),
                          b2=float(s['b2']), q2=float(s['q2']),
                          inflow_seed1=int(s['inflow_seed1']),
-                         inflow_seed2=int(s['inflow_seed2']))
+                         inflow_seed2=int(s['inflow_seed2']),
+                         Pcrit1=float(s['Pcrit1']),
+                         Pcrit2=float(s['Pcrit2']))
                 for i, s in enumerate(scenarios)]
 
 

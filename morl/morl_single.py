@@ -3,6 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 from morl.pql import PQL
+from params_config import nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake
 from policy_eval import extract_policy, extract_lake_policy
 
 
@@ -21,16 +22,19 @@ def run_morl_single(
     os.makedirs(output_folder, exist_ok=True)
 
     is_tree = hasattr(env.unwrapped, 'tree_depth')
+    max_nd_size = None if is_tree else nd_size_cap_lake
 
     agent = PQL(
         env=env,
         ref_point=ref_point,
-        gamma=1.0 if is_tree else 0.98,
+        gamma=1.0,
         initial_epsilon=1.0,
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05,
         num_weight_divisions=num_weight_divisions,
         neighbourhood_size=neighbourhood_size,
+        nd_update_freq=nd_update_freq_tree if is_tree else nd_update_freq_lake,
+        max_nd_size=max_nd_size,
     )
 
     pcs, conv_log = agent.train(
