@@ -36,8 +36,8 @@ param_uncertain = {
 }
 
 observability = {
-    'observable': 0,
-    'non_observable': 1
+    'observable': 1,
+    'non_observable': 0
 }
 
 
