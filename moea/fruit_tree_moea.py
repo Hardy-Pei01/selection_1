@@ -9,13 +9,14 @@ def fruit_tree_inter(depth, num_obj, csv_path, observe, **kwargs):
     env = FruitTreeEnv(depth=depth, reward_dim=num_obj, csv_path=csv_path, observe=True)
     env.reset(SEED)
 
-    reward = np.zeros(num_obj)
+    total_reward = np.zeros(num_obj)
     for step in range(depth):
         _, reward, terminal, _, _ = env.step(decisions[step])
+        total_reward += reward
         if terminal:
             break
 
-    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -total_reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
@@ -26,16 +27,17 @@ def fruit_tree_table(depth, num_obj, csv_path, observe, **kwargs):
                        csv_path=csv_path, observe=bool(observe))
     env.reset(SEED)
 
-    reward = np.zeros(num_obj)
+    total_reward = np.zeros(num_obj)
     for _ in range(depth):
         level, pos = env.current_state
         node_id = int(2 ** level - 1) + pos
         action = table[node_id]
         _, reward, terminal, _, _ = env.step(action)
+        total_reward += reward
         if terminal:
             break
 
-    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -total_reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_inter_robust(depth, num_obj, csv_path, observe,
@@ -46,12 +48,13 @@ def fruit_tree_inter_robust(depth, num_obj, csv_path, observe,
                        scenario_index=int(scenario_index),
                        slip_patterns_path=slip_patterns_path)
     env.reset()
-    reward = np.zeros(num_obj)
+    total_reward = np.zeros(num_obj)
     for step in range(depth):
         _, reward, terminal, _, _ = env.step(decisions[step])
+        total_reward += reward
         if terminal:
             break
-    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -total_reward[i] for i in range(num_obj)}
 
 
 def fruit_tree_table_robust(depth, num_obj, csv_path, observe,
@@ -63,12 +66,13 @@ def fruit_tree_table_robust(depth, num_obj, csv_path, observe,
                        scenario_index=int(scenario_index),
                        slip_patterns_path=slip_patterns_path)
     env.reset()
-    reward = np.zeros(num_obj)
+    total_reward = np.zeros(num_obj)
     for _ in range(depth):
         level, pos = env.current_state
         node_id = int(2 ** level - 1) + pos
         action = table[node_id]
         _, reward, terminal, _, _ = env.step(action)
+        total_reward += reward
         if terminal:
             break
-    return {f'o{i + 1}': -reward[i] for i in range(num_obj)}
+    return {f'o{i + 1}': -total_reward[i] for i in range(num_obj)}

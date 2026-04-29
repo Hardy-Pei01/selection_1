@@ -3,7 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 from morl.pql import PQL
-from morl.policy_eval import extract_policy, extract_lake_policy
+from policy_eval import extract_policy, extract_lake_policy
 
 
 def run_morl_single(

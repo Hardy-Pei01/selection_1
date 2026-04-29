@@ -80,8 +80,7 @@ def generate_leaf_rewards(
     # ── Stage 4: verify ground-truth Pareto front ─────────────────────────────
     # A dominated leaf whose offset lands very close to zero on some objective
     # may end up non-dominated by accident (if its parent happened to be near
-    # the boundary).  is_nondominated uses minimisation convention, so negate
-    # rewards to convert to the maximisation problem used here.
+    # the boundary).
     nd_mask = is_nondominated(all_rewards)
 
     # ── Sort by objectives descending (best first for readability) ────────────
@@ -136,9 +135,9 @@ def main(
 
 
 if __name__ == "__main__":
-    depth = 11
+    depth = 9
     main(depth=depth, reward_dim=2, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[0])
-    # main(depth=depth, reward_dim=4, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[2])
+    main(depth=depth, reward_dim=4, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[2])
     main(depth=depth, reward_dim=6, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[1])
-    # main(depth=depth, reward_dim=8, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[3])
-    # main(depth=depth, reward_dim=10, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[4])
+    main(depth=depth, reward_dim=8, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[3])
+    main(depth=depth, reward_dim=10, tree_seed=TREE_SEED, dominate_seed=DOMINATE_SEED[4])

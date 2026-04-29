@@ -93,10 +93,10 @@ if __name__ == '__main__':
                         print(f"This experiment is {name}")
                         print('--------------------------------------------------------------------')
 
-                        if key_5 == "non_param":
+                        if key_5 == 'deterministic':
                             robust = False
                             scenarios = None
-                        elif key_5 == "param":
+                        elif key_5 == 'robust':
                             robust = True
                             scenarios = None
                         else:

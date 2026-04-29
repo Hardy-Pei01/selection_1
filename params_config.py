@@ -1,6 +1,6 @@
 from ema_workbench import (RealParameter, IntegerParameter, ScalarOutcome, Constant)
 
-tree_depth = 10
+tree_depth = 9
 tree_multi_obj = 2
 tree_many_obj = 6
 lake_multi_obj = 2
@@ -9,7 +9,7 @@ total_years = 100
 years_per_action = 5
 slip_patterns_path = f'./fruits/slip_patterns_depth{tree_depth}.npy'
 tree_n_scenarios = 50
-nd_size_cap = 2**(tree_depth+2)
+nd_size_cap = 2**(tree_depth+3)
 lake_scenarios_path = './lakes/lake_scenarios.npy'
 lake_n_scenarios = 50
 nd_size_cap_lake = 2048

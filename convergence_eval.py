@@ -23,5 +23,5 @@ for folder_name in sorted(os.listdir(data_dir)):
 plt.xlabel("NFE")
 plt.ylabel("Epsilon Progress")
 plt.legend()
+plt.savefig(f"./tree_figures/convergence_{depth}.png", dpi=150, bbox_inches="tight")
 plt.show()
-plt.savefig(f"./lake_figures/convergence_{depth}.png", dpi=150, bbox_inches="tight")

@@ -113,7 +113,7 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
     file_end = output_file_end(params)
 
     if not params.robust:
-        refs = [default_tree_scenario]  # {'scenario_index': None}
+        refs = [default_tree_scenario]
         label_refs = False
     else:
         refs = params.references + [default_tree_scenario_robust]

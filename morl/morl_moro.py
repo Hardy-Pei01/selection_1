@@ -7,8 +7,9 @@ from scipy.optimize import brentq
 from fruit_tree import FruitTreeEnv
 from two_lake import TwoLakeEnv
 from morl.pql import PQL
-from morl.policy_eval import extract_policy, extract_lake_policy,\
-    evaluate_policies_across_scenarios, compute_robustness
+from policy_eval import extract_policy, extract_lake_policy,\
+    evaluate_policies_across_scenarios, compute_robustness, \
+    evaluate_lake_policies_across_scenarios
 from params_config import slip_patterns_path, nd_size_cap, \
     lake_scenarios_path, nd_size_cap_lake
 
@@ -57,10 +58,16 @@ class MoroLakeEnv(TwoLakeEnv):
         inflow_rng2 = np.random.default_rng(self.inflow_seed2)
         self._inflows2 = inflow_rng2.lognormal(
             self._ln_mean, self._ln_sigma, size=self.total_years)
-        self.Pcrit1 = brentq(
-            lambda x: x ** self.q1 / (1 + x ** self.q1) - self.b1 * x, 0.01, 1.5)
-        self.Pcrit2 = brentq(
-            lambda x: x ** self.q2 / (1 + x ** self.q2) - self.b2 * x, 0.01, 1.5)
+
+        if 'Pcrit1' in s.dtype.names:
+            self.Pcrit1 = float(s['Pcrit1'])
+            self.Pcrit2 = float(s['Pcrit2'])
+        else:
+            self.Pcrit1 = brentq(
+                lambda x: x ** self.q1 / (1 + x ** self.q1) - self.b1 * x, 0.01, 1.5)
+            self.Pcrit2 = brentq(
+                lambda x: x ** self.q2 / (1 + x ** self.q2) - self.b2 * x, 0.01, 1.5)
+
         return super().reset(seed=seed, options=options)
 
 
@@ -116,14 +123,14 @@ def run_moro(
     )
 
     # ── Build PCS dataframe ───────────────────────────────────────────────
-    if pcs:
-        pcs_arr = np.array([list(v) for v in pcs])
-        pcs_df = pd.DataFrame(
-            pcs_arr,
-            columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])],
-        )
-    else:
-        pcs_df = pd.DataFrame()
+    # if pcs:
+    #     pcs_arr = np.array([list(v) for v in pcs])
+    #     pcs_df = pd.DataFrame(
+    #         pcs_arr,
+    #         columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])],
+    #     )
+    # else:
+    #     pcs_df = pd.DataFrame()
 
     # ── Build convergence dataframe ───────────────────────────────────────
     conv_df = pd.DataFrame(conv_log)
@@ -189,22 +196,20 @@ def run_moro_lake(
         log_every=max(1, timesteps // 100),
     )
 
-    if pcs:
-        pcs_arr = np.array([list(v) for v in pcs])
-        pcs_df = pd.DataFrame(pcs_arr,
-                              columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])])
-    else:
-        pcs_df = pd.DataFrame()
+    # if pcs:
+    #     pcs_arr = np.array([list(v) for v in pcs])
+    #     pcs_df = pd.DataFrame(pcs_arr,
+    #                           columns=[f'o{i + 1}' for i in range(pcs_arr.shape[1])])
+    # else:
+    #     pcs_df = pd.DataFrame()
 
     conv_df = pd.DataFrame(conv_log)
     if start_time is not None:
         elapsed = int(time.time() - start_time)
         conv_df['time'] = time.strftime('%H:%M:%S', time.gmtime(elapsed))
 
-    # Evaluate extracted policies across all training scenarios.
-    # Each scenario from the saved file is a deterministic environment,
-    # mirroring the fruit tree's evaluate_policies_across_scenarios.
-    scenarios = np.load(lake_scenarios_path)
+    scenarios = env._scenarios
+    n_scenarios = len(scenarios)
 
     def eval_env_factory(idx):
         s = scenarios[idx]
@@ -216,7 +221,16 @@ def run_moro_lake(
             num_obj=n_obj,
         )
 
-    # Extract policies using default scenario (idx=0) for greedy rollout.
+    # Multi-scenario robust re-evaluation — mirrors run_moro for tree
+    eval_df = evaluate_lake_policies_across_scenarios(
+        agent=agent,
+        env_factory=eval_env_factory,
+        n_scenarios=n_scenarios,
+        n_obj=n_obj,
+    )
+    robust_pcs_df = compute_robustness(eval_df, n_obj)
+
+    # Extract policy decisions on reference scenario (for policies_*.csv)
     policy_rows = []
     for pol_id, target_vec in enumerate(agent.archive):
         decisions = extract_lake_policy(agent, target_vec, eval_env_factory(0))
@@ -228,6 +242,6 @@ def run_moro_lake(
 
     policies_df = pd.DataFrame(policy_rows) if policy_rows else pd.DataFrame()
     policies_df.to_csv(f'{output_folder}/policies_{file_end}.csv', index=False)
-    pcs_df.to_csv(f'{output_folder}/pcs_{file_end}.csv', index=False)
+    robust_pcs_df.to_csv(f'{output_folder}/pcs_{file_end}.csv', index=False)
     conv_df.to_csv(f'{output_folder}/convergence_{file_end}.csv', index=False)
     return policies_df

@@ -24,31 +24,23 @@ run_scoring = {
     'decomposition': 1,
 }
 
-# Scenario method:
-#   single — one run on the base scenario (slip_prob=0.0), no uncertainty
-#   multi  — one run per reference slip_prob + base, results combined
-#   moro   — one run across 50 sampled scenarios (robust optimisation)
 run_scenario_method = {
-    'single': 0,
+    'single': 1,
     'multi': 0,
-    'moro': 1,
+    'moro': 0,
 }
 
-# Objective dimensionality
 obj_uncertain = {
-    'multi_obj': 1,  # 2-objective tree
-    'many_obj': 1,  # 6-objective tree  (tree_many_obj from params_config)
+    'multi_obj': 1,
+    'many_obj': 1,
 }
 
-# Parametric uncertainty (slip_prob)
 param_uncertain = {
-    'deterministic': 0,  # fixed slip_prob=0.0  — only valid with 'single'
-    'robust': 1,  # uncertain slip_prob  — only valid with 'multi'/'moro'
+    'deterministic': 1,
+    'robust': 0
 }
 
 
-# ── Timestep grid ─────────────────────────────────────────────────────────────
-# Mirrors nfe_settings in run_tree_moea.py.
 def _nested():
     return defaultdict(_nested)
 
@@ -83,7 +75,6 @@ num_objectives = {
     'many_obj': tree_many_obj,
 }
 
-# ── Main loop — mirrors run_tree_moea.py ──────────────────────────────────────
 if __name__ == '__main__':
 
     for key_scoring, val_scoring in run_scoring.items():
@@ -109,7 +100,7 @@ if __name__ == '__main__':
                     if key_3 in ('multi', 'moro') and key_param == 'deterministic':
                         continue  # multi/moro require param uncertainty
 
-                    name = f'{key_scoring}_{key_3}_{key_obj}_{key_param}'
+                    name = f'{key_scoring}_{key_3}_{key_obj}'
                     timesteps = timestep_settings[key_3][key_obj][key_param]
                     n_obj = num_objectives[key_obj]
                     csv = csv_paths[key_obj]

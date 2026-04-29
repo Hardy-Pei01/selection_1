@@ -1,18 +1,10 @@
 import numpy as np
 import pandas as pd
+from count_non_dominated import is_nondominated
 
 
 def extract_policy(agent, target_vec):
-    """Trace back through the Q-table to recover the decision sequence
-    for a given archive Q-vector.
 
-    Args:
-        agent: Trained PQL agent.
-        target_vec: A Q-vector from agent.archive (the return to track).
-
-    Returns:
-        decisions: List of depth actions (0 or 1) forming the policy.
-    """
     env_shape = agent.env_shape
     depth = agent.env.unwrapped.tree_depth
     decisions = []
@@ -84,12 +76,13 @@ def extract_lake_policy(agent, target_vec, env):
 
 
 def evaluate_policies_across_scenarios(agent, env_factory, n_scenarios):
+
     n_obj = agent.num_objectives
     rows = []
 
     if not agent.archive:
         return pd.DataFrame(columns=['policy_id', 'scenario_index'] +
-                            [f'o{i+1}' for i in range(n_obj)])
+                                    [f'o{i + 1}' for i in range(n_obj)])
 
     for pol_id, target_vec in enumerate(agent.archive):
         decisions = extract_policy(agent, target_vec)
@@ -97,21 +90,52 @@ def evaluate_policies_across_scenarios(agent, env_factory, n_scenarios):
         for scenario_idx in range(n_scenarios):
             env = env_factory(scenario_idx)
             env.reset()
-            reward = np.zeros(n_obj)
+            total_reward = np.zeros(n_obj)
             for action in decisions:
                 _, reward, terminal, _, _ = env.step(action)
+                total_reward += reward
                 if terminal:
                     break
 
             row = {'policy_id': pol_id, 'scenario_index': scenario_idx}
-            row.update({f'o{i + 1}': float(reward[i]) for i in range(n_obj)})
+            row.update({f'o{i + 1}': float(total_reward[i]) for i in range(n_obj)})
+            rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def evaluate_lake_policies_across_scenarios(agent, env_factory, n_scenarios,
+                                            n_obj, ref_scenario_idx=0):
+
+    rows = []
+    if not agent.archive:
+        return pd.DataFrame(columns=['policy_id', 'scenario_index'] +
+                                    [f'o{i+1}' for i in range(n_obj)])
+
+    for pol_id, target_vec in enumerate(agent.archive):
+        # Extract action sequence once on the reference env
+        ref_env = env_factory(ref_scenario_idx)
+        decisions = extract_lake_policy(agent, target_vec, ref_env)
+
+        for scenario_idx in range(n_scenarios):
+            env = env_factory(scenario_idx)
+            env.reset()
+            total_reward = np.zeros(n_obj)
+            for action_nd in decisions:
+                _, reward, terminated, _, _ = env.step(np.array(action_nd))
+                total_reward += reward
+                if terminated:
+                    break
+
+            row = {'policy_id': pol_id, 'scenario_index': scenario_idx}
+            row.update({f'o{i+1}': float(total_reward[i]) for i in range(n_obj)})
             rows.append(row)
 
     return pd.DataFrame(rows)
 
 
 def compute_robustness(eval_df, n_obj):
-    obj_cols = [f'o{i+1}' for i in range(n_obj)]
+    obj_cols = [f'o{i + 1}' for i in range(n_obj)]
 
     if eval_df.empty:
         return pd.DataFrame(columns=['policy_id'] + obj_cols)
@@ -123,3 +147,54 @@ def compute_robustness(eval_df, n_obj):
             row[col] = np.percentile(group[col].values, 20)
         records.append(row)
     return pd.DataFrame(records)
+
+
+def evaluate_table_archive_robust(archive_path, depth, n_obj,
+                                  env_factory, n_scenarios):
+
+    df = pd.read_csv(archive_path)
+    lever_cols = [c for c in df.columns if c.startswith('n')]
+    if not lever_cols:
+        raise ValueError(f"No lever columns (n0, n1, ...) found in {archive_path}.")
+
+    n_internal = 2**depth - 1
+    rows = []
+
+    for pol_id, row in df.iterrows():
+        table = [int(row[f'n{i}']) for i in range(n_internal)]
+
+        for scenario_idx in range(n_scenarios):
+            env = env_factory(scenario_idx)
+            env.reset()
+            total_reward = np.zeros(n_obj)
+            for _ in range(depth):
+                level, pos = env.current_state
+                node_id = int(2**level - 1) + pos
+                action = table[node_id]
+                _, reward, terminal, _, _ = env.step(action)
+                total_reward += reward
+                if terminal:
+                    break
+
+            r = {'policy_id': pol_id, 'scenario_index': scenario_idx}
+            r.update({f'o{i+1}': float(total_reward[i]) for i in range(n_obj)})
+            rows.append(r)
+
+    eval_df = pd.DataFrame(rows)
+    robust_df = compute_robustness(eval_df, n_obj)
+
+    if robust_df.empty:
+        return robust_df
+
+    robust_rewards = robust_df[[f'o{i+1}' for i in range(n_obj)]].values
+    nd_mask = is_nondominated(robust_rewards)
+
+    df_pruned = df.loc[robust_df.index[nd_mask]].copy()
+    for i in range(n_obj):
+        df_pruned[f'o{i+1}'] = robust_rewards[nd_mask, i]
+
+    df_pruned = df_pruned.drop_duplicates(
+        subset=[f'o{i+1}' for i in range(n_obj)]
+    ).reset_index(drop=True)
+
+    return df_pruned

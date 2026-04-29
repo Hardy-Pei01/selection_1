@@ -66,7 +66,9 @@ class FruitTreeEnv(gym.Env):
         if self.current_state[0] == self.tree_depth:
             self.terminal = True
 
-        return self.current_state.copy(), reward, self.terminal, False, {}
+        obs = (self.current_state.copy() if self.observe
+               else np.array([self.current_state[0], 0], dtype=np.int32))
+        return obs, reward, self.terminal, False, {}
 
     @property
     def unwrapped(self):
