@@ -17,15 +17,15 @@ root_folder = './morl_lake'
 # ── Experiment toggles ────────────────────────────────────────────────────────
 
 run_scoring = {
-    'pareto': 1,
+    'pareto': 0,
     'indicator': 0,
-    'decomposition': 0,
+    'decomposition': 1,
 }
 
 run_scenario_method = {
-    'single': 1,
+    'single': 0,
     'multi': 0,
-    'moro': 0,
+    'moro': 1,
 }
 
 obj_uncertain = {
@@ -34,8 +34,8 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'deterministic': 1,
-    'robust': 0,
+    'deterministic': 0,
+    'robust': 1,
 }
 
 

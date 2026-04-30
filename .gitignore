@@ -7,3 +7,4 @@ __pycache__
 *.png
 tree_data/
 previous_fruits/
+.ipynb_checkpoints/

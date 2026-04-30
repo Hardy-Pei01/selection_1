@@ -9,17 +9,17 @@ def _pcrit(b, q):
 tree_depth = 9
 tree_multi_obj = 2
 tree_many_obj = 6
-lake_multi_obj = 2
-lake_many_obj = 6
-total_years = 100
-years_per_action = 5
 slip_patterns_path = f'./fruits/slip_patterns_depth{tree_depth}.npy'
 tree_n_scenarios = 50
 nd_size_cap_tree = 2 ** (tree_depth + 3)
 nd_update_freq_tree = 1
+lake_multi_obj = 2
+lake_many_obj = 6
+total_years = 100
+years_per_action = 5
 lake_scenarios_path = './lakes/lake_scenarios.npy'
 lake_n_scenarios = 50
-nd_size_cap_lake = 50
+nd_size_cap_lake = 256
 nd_update_freq_lake = 5
 
 multi_objs_tree_params = {

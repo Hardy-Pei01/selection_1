@@ -11,8 +11,8 @@ activate_logging = 1
 root_folder = f'./data_{tree_depth}_3'
 
 run_policy = {
-    'intertemporal': 0,
-    'table': 1
+    'intertemporal': 1,
+    'table': 0
 }
 run_evo_method = {
     'NSGAII': 1,
@@ -20,9 +20,9 @@ run_evo_method = {
     'MOEAD': 1
 }
 run_scenario_method = {
-    'single': 1,
+    'single': 0,
     'multi': 0,
-    'moro': 0
+    'moro': 1
 }
 
 obj_uncertain = {
@@ -31,13 +31,13 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'deterministic': 1,
-    'robust': 0
+    'deterministic': 0,
+    'robust': 1
 }
 
 observability = {
-    'observable': 0,
-    'non_observable': 1
+    'observable': 1,
+    'non_observable': 0
 }
 
 

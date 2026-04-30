@@ -9,9 +9,47 @@ import gymnasium as gym
 import numpy as np
 
 from morl_baselines.common.morl_algorithm import MOAgent
-from morl_baselines.common.pareto import get_non_dominated
+from morl_baselines.common.pareto import get_non_dominated as _get_nd_morl
 from morl_baselines.common.performance_indicators import hypervolume
 from morl_baselines.common.utils import linearly_decaying_value
+
+# Faster pareto pruning via moocore (~6× faster than morl_baselines at the
+# union sizes seen in the lake problem). Returns a boolean mask under the
+# same maximisation convention as get_non_dominated. Falls back to the
+# original implementation if moocore isn't installed.
+try:
+    from moocore import is_nondominated as _moocore_is_nd
+
+    def _nd_mask(arr: np.ndarray) -> np.ndarray:
+        """Boolean mask: True for non-dominated rows under maximisation."""
+        if arr.shape[0] <= 1:
+            return np.ones(arr.shape[0], dtype=bool)
+        # moocore is min-convention; negate for max
+        return _moocore_is_nd(-arr)
+
+    def get_non_dominated(candidates):
+        """Drop-in replacement for morl_baselines.get_non_dominated.
+
+        Accepts a set of tuples or any iterable of vectors; returns a set
+        of the non-dominated tuples under the same maximisation convention.
+        """
+        if not candidates:
+            return set()
+        arr = np.asarray(list(candidates), dtype=float)
+        if arr.shape[0] == 1:
+            return {tuple(arr[0])}
+        mask = _nd_mask(arr)
+        return {tuple(arr[i]) for i in range(arr.shape[0]) if mask[i]}
+
+except ImportError:  # pragma: no cover
+    get_non_dominated = _get_nd_morl
+
+    def _nd_mask(arr: np.ndarray) -> np.ndarray:
+        """Fallback: build mask by membership-testing the morl_baselines result."""
+        if arr.shape[0] <= 1:
+            return np.ones(arr.shape[0], dtype=bool)
+        nd = _get_nd_morl({tuple(r) for r in arr})
+        return np.array([tuple(r) in nd for r in arr], dtype=bool)
 
 
 def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
@@ -180,19 +218,31 @@ class PQL(MOAgent):
     # ------------------------------------------------------------------
 
     def score_pareto_cardinality(self, state: int):
-        """Pareto-based scoring: count non-dominated contributions per action."""
-        visited = {a: self.get_q_set(state, a)
-                   for a in range(self.num_actions)
-                   if self.counts[state][a] > 0}
-        if not visited:
-            return np.ones(self.num_actions)  # uniform -> random selection
-        candidates = set().union(*visited.values())
-        non_dominated = get_non_dominated(candidates)
+        """Pareto-based scoring: count non-dominated contributions per action.
+
+        Stacks Q-vectors from all visited actions into one (V, d) array,
+        prunes via _nd_mask (moocore-backed), then attributes each
+        surviving row back to its owning action.
+        """
+        q_arrays = []
+        action_of_row = []
+        for a in range(self.num_actions):
+            if self.counts[state][a] == 0:
+                continue
+            qa = self.get_q_array(state, a)
+            if qa.shape[0] == 0:
+                continue
+            q_arrays.append(qa)
+            action_of_row.extend([a] * qa.shape[0])
+        if not q_arrays:
+            return np.ones(self.num_actions)
+        Q = np.vstack(q_arrays)                           # (V, d)
+        action_of_row = np.array(action_of_row)           # (V,)
+        mask = _nd_mask(Q)                                # (V,)
         scores = np.zeros(self.num_actions)
-        for vec in non_dominated:
-            for a, q_set in visited.items():
-                if vec in q_set:
-                    scores[a] += 1
+        # Each non-dominated row contributes +1 to its owning action.
+        if mask.any():
+            np.add.at(scores, action_of_row[mask], 1)
         return scores
 
     def score_hypervolume(self, state: int):
@@ -210,38 +260,33 @@ class PQL(MOAgent):
     def score_decomposition(self, state: int):
         """Decomposition-based scoring using Chebyshev scalarisation.
 
-        Selects a random subproblem i, then evaluates only the k weight
-        vectors in its neighbourhood B(i) — analogous to MOEA/D's
-        neighbourhood-restricted update. The action that wins the most
-        subproblems within the neighbourhood receives the highest score.
-
-        Uses nd_decomp (not non_dominated) as the bootstrap structure, so
-        the Q-sets reflect decomposition-directed exploration rather than
-        Pareto pruning.
-
-        Complexity: O(k × A × V) per call, where k = neighbourhood_size,
-        A = num_actions, V = average Q-set size. This is independent of
-        the total number of weight vectors W.
+        Vectorized: stacks Q-vectors per action and computes scalarisations
+        in one broadcast per weight in the neighbourhood.
         """
-        visited = {a: self.get_q_set(state, a, decomp=True)
-                   for a in range(self.num_actions)
-                   if self.counts[state][a] > 0}
-        if not visited:
+        q_arrays = []
+        action_of_row = []
+        for a in range(self.num_actions):
+            if self.counts[state][a] == 0:
+                continue
+            qs = list(self.get_q_set(state, a, decomp=True))
+            if not qs:
+                continue
+            q_arrays.append(np.array(qs, dtype=float))
+            action_of_row.extend([a] * len(qs))
+        if not q_arrays:
             return np.ones(self.num_actions)
+        Q = np.vstack(q_arrays)                          # (V_total, d)
+        action_of_row = np.array(action_of_row)          # (V_total,)
+        dev = self.ideal_point - Q                       # (V_total, d)
+
         scores = np.zeros(self.num_actions)
         i = self.np_random.integers(len(self.weights))
-        for idx in self.neighbourhoods[i]:
-            w = self.weights[idx]
-            best_action = None
-            best_scalarised = np.inf
-            for a, q_set in visited.items():
-                for vec in q_set:
-                    scalarised = np.max(w * (self.ideal_point - np.array(vec)))
-                    if scalarised < best_scalarised:
-                        best_scalarised = scalarised
-                        best_action = a
-            if best_action is not None:
-                scores[best_action] += 1
+        nbrs = self.neighbourhoods[i]
+        W = self.weights[nbrs]                           # (k, d)
+        scalarised = np.max(W[:, None, :] * dev[None, :, :], axis=2)  # (k, V_total)
+        winners = np.argmin(scalarised, axis=1)
+        for row in winners:
+            scores[action_of_row[row]] += 1
         return scores
 
     # ------------------------------------------------------------------
@@ -261,6 +306,17 @@ class PQL(MOAgent):
         nd_array = np.array(list(nd))
         q_array = self.avg_reward[state][action] + self.gamma * nd_array
         return {tuple(vec) for vec in q_array}
+
+    def get_q_array(self, state: int, action: int, decomp: bool = False) -> np.ndarray:
+        """Like get_q_set but returns the underlying numpy array directly.
+        Avoids set↔tuple round-trips when the consumer is going to re-array it.
+        Returns shape (V, d), possibly empty (0, d).
+        """
+        nd = self.nd_decomp[state][action] if decomp else self.non_dominated[state][action]
+        if not nd:
+            return np.empty((0, self.num_objectives))
+        nd_array = np.array(list(nd))
+        return self.avg_reward[state][action] + self.gamma * nd_array
 
     def select_action(self, state: int, score_func: Callable):
         """ε-greedy action selection using the given scoring function."""
@@ -315,31 +371,23 @@ class PQL(MOAgent):
     def calc_decomp_best(self, state: int) -> set:
         """Return the global best-per-weight Q-vector set at a state.
 
-        For each weight vector w, finds the Q-vector across all actions
-        that minimises the Chebyshev scalarisation. The resulting set —
-        one vector per weight, duplicates collapsed — is the decomposition
-        analog of calc_non_dominated: a single shared bootstrap for all
-        actions at this state.
+        Vectorized: stacks every Q-vector across visited actions into one
+        (V_total, d) array, then for each weight vector w computes the
+        Chebyshev scalarisation as a single broadcast.
         """
-        q_sets = [
-            self.get_q_set(state, a, decomp=True)
-            for a in range(self.num_actions)
-            if self.counts[state][a] > 0  # exclude unvisited actions
-        ]
-        if not q_sets:
+        q_vecs = []
+        for a in range(self.num_actions):
+            if self.counts[state][a] == 0:
+                continue
+            q_vecs.extend(self.get_q_set(state, a, decomp=True))
+        if not q_vecs:
             return {tuple(np.zeros(self.num_objectives))}
-        global_set = set()
-        for w in self.weights:
-            best_vec = None
-            best_scalarised = np.inf
-            for q_set in q_sets:
-                for vec in q_set:
-                    scalarised = np.max(w * (self.ideal_point - np.array(vec)))
-                    if scalarised < best_scalarised:
-                        best_scalarised = scalarised
-                        best_vec = vec
-            if best_vec is not None:
-                global_set.add(best_vec)
+
+        Q = np.array(q_vecs, dtype=float)               # (V_total, d)
+        dev = self.ideal_point - Q                      # (V_total, d)
+        scalarised = np.max(self.weights[:, None, :] * dev[None, :, :], axis=2)
+        best_idx = np.argmin(scalarised, axis=1)        # (W,)
+        global_set = {tuple(Q[i]) for i in best_idx}
         return global_set if global_set else {tuple(np.zeros(self.num_objectives))}
 
     # ------------------------------------------------------------------
@@ -455,8 +503,13 @@ class PQL(MOAgent):
             )
 
         # Final archive update before returning
-        pcs = self.get_local_pcs(state=0, decomp=is_decomp)
-        real_pcs = {v for v in pcs if any(x != 0.0 for x in v)}
+        all_q_vecs = set()
+        for s in self.counts:
+            for a in range(self.num_actions):
+                if self.counts[s][a] == 0:
+                    continue
+                all_q_vecs |= self.get_q_set(s, a, decomp=is_decomp)
+        real_pcs = {v for v in all_q_vecs if any(x != 0.0 for x in v)}
         self.archive |= real_pcs
         if len(self.archive) > 1:
             self.archive = get_non_dominated(self.archive)
