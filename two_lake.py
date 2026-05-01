@@ -169,7 +169,7 @@ class TwoLakeEnv(gym.Env):
         terminated = self.gym_step >= self.n_gym_steps
 
         if self.num_obj == 2:
-            rewards = rewards[[0, 2]]  # -utility1, -reliability1
+            rewards = rewards[[0, 2]]  # utility1, reliability1
 
         return self._obs(), rewards, terminated, False, {}
 

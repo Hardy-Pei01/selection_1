@@ -19,8 +19,8 @@ root_folder = f'./data_morl_{tree_depth}'
 
 # PQL action-evaluation method (analog of run_evo_method in run_tree_moea.py)
 run_scoring = {
-    'pareto': 1,
-    'indicator': 1,
+    'pareto': 0,
+    'indicator': 0,
     'decomposition': 1,
 }
 

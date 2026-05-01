@@ -10,7 +10,8 @@ from policy_eval import extract_policy, extract_lake_policy, \
     evaluate_tree_policies_across_scenarios, compute_robustness, \
     evaluate_lake_policies_across_scenarios
 from params_config import slip_patterns_path, nd_size_cap_tree, \
-    lake_scenarios_path, nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake
+    lake_scenarios_path, nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake, \
+    archive_cap_tree, archive_cap_lake
 
 
 class MoroFruitTreeEnv(FruitTreeEnv):
@@ -113,13 +114,16 @@ def run_moro(
         neighbourhood_size=neighbourhood_size,
         nd_update_freq=nd_update_freq_tree,
         robust=True,
-        max_nd_size=nd_size_cap_tree
+        max_nd_size=nd_size_cap_tree,
+        max_archive_size=archive_cap_tree,
+        verbose=True,
+        tag=file_end,
     )
 
     pcs, conv_log = agent.train(
         total_timesteps=timesteps,
         action_eval=scoring,
-        log_every=max(1, timesteps // 100),
+        log_every=max(1, timesteps // 10),
     )
 
     # ── Build convergence dataframe ───────────────────────────────────────
@@ -179,12 +183,15 @@ def run_moro_lake(
         final_epsilon=0.05, num_weight_divisions=num_weight_divisions,
         neighbourhood_size=neighbourhood_size,
         nd_update_freq=nd_update_freq_lake, robust=True,
-        max_nd_size=nd_size_cap_lake
+        max_nd_size=nd_size_cap_lake,
+        max_archive_size=archive_cap_lake,
+        verbose=True,
+        tag=file_end,
     )
 
     pcs, conv_log = agent.train(
         total_timesteps=timesteps, action_eval=scoring,
-        log_every=max(1, timesteps // 100),
+        log_every=max(1, timesteps // 10),
     )
 
     conv_df = pd.DataFrame(conv_log)

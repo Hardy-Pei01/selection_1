@@ -13,6 +13,7 @@ slip_patterns_path = f'./fruits/slip_patterns_depth{tree_depth}.npy'
 tree_n_scenarios = 50
 nd_size_cap_tree = 2 ** (tree_depth + 3)
 nd_update_freq_tree = 1
+archive_cap_tree = nd_size_cap_tree
 lake_multi_obj = 2
 lake_many_obj = 6
 total_years = 100
@@ -21,6 +22,7 @@ lake_scenarios_path = './lakes/lake_scenarios.npy'
 lake_n_scenarios = 50
 nd_size_cap_lake = 256
 nd_update_freq_lake = 5
+archive_cap_lake = 5000
 
 multi_objs_tree_params = {
     'depth': tree_depth,

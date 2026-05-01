@@ -3,7 +3,10 @@ import time
 import numpy as np
 import pandas as pd
 from morl.pql import PQL
-from params_config import nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake
+from params_config import (
+    nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake,
+    archive_cap_tree, archive_cap_lake,
+)
 from policy_eval import extract_policy, extract_lake_policy
 
 
@@ -23,6 +26,12 @@ def run_morl_single(
 
     is_tree = hasattr(env.unwrapped, 'tree_depth')
     max_nd_size = None if is_tree else nd_size_cap_lake
+    max_archive_size = archive_cap_tree if is_tree else archive_cap_lake
+
+    tag_parts = [file_end]
+    if ref_num is not None:
+        tag_parts.append(f'ref{ref_num}')
+    tag = '_'.join(tag_parts)
 
     agent = PQL(
         env=env,
@@ -35,12 +44,15 @@ def run_morl_single(
         neighbourhood_size=neighbourhood_size,
         nd_update_freq=nd_update_freq_tree if is_tree else nd_update_freq_lake,
         max_nd_size=max_nd_size,
+        max_archive_size=max_archive_size,
+        verbose=True,
+        tag=tag,
     )
 
     pcs, conv_log = agent.train(
         total_timesteps=timesteps,
         action_eval=scoring,
-        log_every=max(1, timesteps // 100),
+        log_every=max(1, timesteps // 10),
     )
 
     # ── Build PCS dataframe ───────────────────────────────────────────────

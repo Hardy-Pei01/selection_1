@@ -10,6 +10,12 @@ def extract_policy(agent, target_vec):
     decisions = []
     target = np.array(target_vec)
 
+    # If the agent was trained with decomposition scoring, the populated
+    # bootstrap structure is `nd_decomp`, not `non_dominated`. Without this,
+    # extract_policy reads zero-init phantom Q-sets and silently picks
+    # action 0 at every level.
+    decomp = getattr(agent, 'action_eval', None) == 'decomposition'
+
     level, pos = 0, 0
     for _ in range(depth):
         state = int(np.ravel_multi_index([level, pos], env_shape))
@@ -20,7 +26,7 @@ def extract_policy(agent, target_vec):
         for a in range(agent.num_actions):
             if agent.counts[state][a] == 0:
                 continue
-            q_set = agent.get_q_set(state, a)
+            q_set = agent.get_q_set(state, a, decomp=decomp)
             for q_vec in q_set:
                 dist = np.sum(np.abs(np.array(q_vec) - target))
                 if dist < best_dist:
@@ -47,6 +53,9 @@ def extract_lake_policy(agent, target_vec, env):
     decisions = []
     terminated = False
 
+    # See note in extract_policy.
+    decomp = getattr(agent, 'action_eval', None) == 'decomposition'
+
     while not terminated:
         best_action = None
         best_dist = np.inf
@@ -55,7 +64,7 @@ def extract_lake_policy(agent, target_vec, env):
         for a in range(agent.num_actions):
             if agent.counts[state_flat][a] == 0:
                 continue
-            for q_vec in agent.get_q_set(state_flat, a):
+            for q_vec in agent.get_q_set(state_flat, a, decomp=decomp):
                 dist = np.sum(np.abs(np.array(q_vec) - target))
                 if dist < best_dist:
                     best_dist = dist

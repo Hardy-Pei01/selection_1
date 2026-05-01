@@ -12,44 +12,30 @@ from morl_baselines.common.morl_algorithm import MOAgent
 from morl_baselines.common.pareto import get_non_dominated as _get_nd_morl
 from morl_baselines.common.performance_indicators import hypervolume
 from morl_baselines.common.utils import linearly_decaying_value
+from moocore import is_nondominated as _moocore_is_nd
 
-# Faster pareto pruning via moocore (~6× faster than morl_baselines at the
-# union sizes seen in the lake problem). Returns a boolean mask under the
-# same maximisation convention as get_non_dominated. Falls back to the
-# original implementation if moocore isn't installed.
-try:
-    from moocore import is_nondominated as _moocore_is_nd
 
-    def _nd_mask(arr: np.ndarray) -> np.ndarray:
-        """Boolean mask: True for non-dominated rows under maximisation."""
-        if arr.shape[0] <= 1:
-            return np.ones(arr.shape[0], dtype=bool)
-        # moocore is min-convention; negate for max
-        return _moocore_is_nd(-arr)
+def _nd_mask(arr: np.ndarray) -> np.ndarray:
+    """Boolean mask: True for non-dominated rows under maximisation."""
+    if arr.shape[0] <= 1:
+        return np.ones(arr.shape[0], dtype=bool)
+    # moocore is min-convention; negate for max
+    return _moocore_is_nd(-arr)
 
-    def get_non_dominated(candidates):
-        """Drop-in replacement for morl_baselines.get_non_dominated.
 
-        Accepts a set of tuples or any iterable of vectors; returns a set
-        of the non-dominated tuples under the same maximisation convention.
-        """
-        if not candidates:
-            return set()
-        arr = np.asarray(list(candidates), dtype=float)
-        if arr.shape[0] == 1:
-            return {tuple(arr[0])}
-        mask = _nd_mask(arr)
-        return {tuple(arr[i]) for i in range(arr.shape[0]) if mask[i]}
+def get_non_dominated(candidates):
+    """Drop-in replacement for morl_baselines.get_non_dominated.
 
-except ImportError:  # pragma: no cover
-    get_non_dominated = _get_nd_morl
-
-    def _nd_mask(arr: np.ndarray) -> np.ndarray:
-        """Fallback: build mask by membership-testing the morl_baselines result."""
-        if arr.shape[0] <= 1:
-            return np.ones(arr.shape[0], dtype=bool)
-        nd = _get_nd_morl({tuple(r) for r in arr})
-        return np.array([tuple(r) in nd for r in arr], dtype=bool)
+    Accepts a set of tuples or any iterable of vectors; returns a set
+    of the non-dominated tuples under the same maximisation convention.
+    """
+    if not candidates:
+        return set()
+    arr = np.asarray(list(candidates), dtype=float)
+    if arr.shape[0] == 1:
+        return {tuple(arr[0])}
+    mask = _nd_mask(arr)
+    return {tuple(arr[i]) for i in range(arr.shape[0]) if mask[i]}
 
 
 def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
@@ -112,6 +98,9 @@ class PQL(MOAgent):
             nd_update_freq=1,
             robust=False,
             max_nd_size=None,
+            max_archive_size=None,
+            verbose=False,
+            tag="",
     ):
 
         super().__init__(env, seed=seed)
@@ -125,6 +114,13 @@ class PQL(MOAgent):
         self.ref_point = ref_point
         self.robust = robust
         self.max_nd_size = max_nd_size
+        # Bound on the global Pareto archive. Decoupled from max_nd_size
+        # (which bounds per-(s, a) Q-sets for training cost) so the archive
+        # can stay large for diversity without paying training-time cost.
+        # When None, the archive is unbounded.
+        self.max_archive_size = max_archive_size
+        self.verbose = verbose
+        self.tag = tag
 
         # Action space
         if isinstance(self.env.action_space, gym.spaces.Discrete):
@@ -236,9 +232,9 @@ class PQL(MOAgent):
             action_of_row.extend([a] * qa.shape[0])
         if not q_arrays:
             return np.ones(self.num_actions)
-        Q = np.vstack(q_arrays)                           # (V, d)
-        action_of_row = np.array(action_of_row)           # (V,)
-        mask = _nd_mask(Q)                                # (V,)
+        Q = np.vstack(q_arrays)  # (V, d)
+        action_of_row = np.array(action_of_row)  # (V,)
+        mask = _nd_mask(Q)  # (V,)
         scores = np.zeros(self.num_actions)
         # Each non-dominated row contributes +1 to its owning action.
         if mask.any():
@@ -275,14 +271,14 @@ class PQL(MOAgent):
             action_of_row.extend([a] * len(qs))
         if not q_arrays:
             return np.ones(self.num_actions)
-        Q = np.vstack(q_arrays)                          # (V_total, d)
-        action_of_row = np.array(action_of_row)          # (V_total,)
-        dev = self.ideal_point - Q                       # (V_total, d)
+        Q = np.vstack(q_arrays)  # (V_total, d)
+        action_of_row = np.array(action_of_row)  # (V_total,)
+        dev = self.ideal_point - Q  # (V_total, d)
 
         scores = np.zeros(self.num_actions)
         i = self.np_random.integers(len(self.weights))
         nbrs = self.neighbourhoods[i]
-        W = self.weights[nbrs]                           # (k, d)
+        W = self.weights[nbrs]  # (k, d)
         scalarised = np.max(W[:, None, :] * dev[None, :, :], axis=2)  # (k, V_total)
         winners = np.argmin(scalarised, axis=1)
         for row in winners:
@@ -328,14 +324,17 @@ class PQL(MOAgent):
                 np.argwhere(action_scores == np.max(action_scores)).flatten()
             )
 
-    def _subsample_nd(self, nd: set) -> set:
-        """Subsample a non-dominated set to max_nd_size using crowding distance.
+    def _subsample_nd(self, nd: set, target_size: int = None) -> set:
+        """Subsample a non-dominated set down to target_size via crowding
+        distance. If target_size is None, falls back to self.max_nd_size
+        (preserves the original per-(s,a) cap behaviour).
 
         Preserves diversity by retaining the most spread-out vectors —
         the same criterion used by NSGA-II for truncation within a rank.
-        Applied only when len(nd) > max_nd_size (= len(weights)).
         """
-        if len(nd) <= self.max_nd_size:
+        if target_size is None:
+            target_size = self.max_nd_size
+        if target_size is None or len(nd) <= target_size:
             return nd
         arr = np.array(list(nd))
         n, d = arr.shape
@@ -350,7 +349,7 @@ class PQL(MOAgent):
                 crowd[order[i]] += (
                         (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / obj_range
                 )
-        keep = np.argsort(crowd)[-self.max_nd_size:]
+        keep = np.argsort(crowd)[-target_size:]
         return {tuple(arr[i]) for i in keep}
 
     def calc_non_dominated(self, state: int):
@@ -383,10 +382,10 @@ class PQL(MOAgent):
         if not q_vecs:
             return {tuple(np.zeros(self.num_objectives))}
 
-        Q = np.array(q_vecs, dtype=float)               # (V_total, d)
-        dev = self.ideal_point - Q                      # (V_total, d)
+        Q = np.array(q_vecs, dtype=float)  # (V_total, d)
+        dev = self.ideal_point - Q  # (V_total, d)
         scalarised = np.max(self.weights[:, None, :] * dev[None, :, :], axis=2)
-        best_idx = np.argmin(scalarised, axis=1)        # (W,)
+        best_idx = np.argmin(scalarised, axis=1)  # (W,)
         global_set = {tuple(Q[i]) for i in best_idx}
         return global_set if global_set else {tuple(np.zeros(self.num_objectives))}
 
@@ -426,6 +425,9 @@ class PQL(MOAgent):
             )
 
         is_decomp = (action_eval == "decomposition")
+        # Persist on the agent so post-training consumers (extract_policy,
+        # extract_lake_policy) know which Q-set table to read from.
+        self.action_eval = action_eval
 
         convergence_log = []
         next_log_step = log_every
@@ -470,16 +472,37 @@ class PQL(MOAgent):
 
                 # Convergence logging
                 if self.global_step >= next_log_step:
-                    pcs = self.get_local_pcs(state=0, decomp=is_decomp)
+                    # Sweep Q-vectors across all visited (s, a) pairs, not
+                    # just state 0 — same logic as the final archive update.
+                    # The log_every cadence controls how often we pay this
+                    # cost; default log_every = timesteps // 100 is fine.
+                    all_q_vecs = set()
+                    for s in self.counts:
+                        for a in range(self.num_actions):
+                            if self.counts[s][a] == 0:
+                                continue
+                            all_q_vecs |= self.get_q_set(s, a, decomp=is_decomp)
 
                     # Exclude the zero-initialisation phantom vector — it dominates all
                     # real (negative) reward vectors under maximisation convention and
                     # would permanently corrupt the archive once added.
-                    real_pcs = {v for v in pcs if any(x != 0.0 for x in v)}
+                    real_pcs = {v for v in all_q_vecs if any(x != 0.0 for x in v)}
 
                     self.archive |= real_pcs
                     if len(self.archive) > 1:
                         self.archive = get_non_dominated(self.archive)
+                    # Bound the archive size: in higher-dim objective spaces
+                    # the Pareto front stays large after pruning and would
+                    # otherwise grow unboundedly across log steps, choking
+                    # the post-training policy-extraction + scenario-replay
+                    # loop. Decoupled from max_nd_size so the per-(s,a) Q-set
+                    # cap stays small (training cost) while the archive can
+                    # stay large (diversity).
+                    if (self.max_archive_size is not None
+                            and len(self.archive) > self.max_archive_size):
+                        self.archive = self._subsample_nd(
+                            self.archive, target_size=self.max_archive_size
+                        )
 
                     hv = hypervolume(self.ref_point, list(self.archive)) if self.archive else 0.0
                     convergence_log.append({
@@ -488,6 +511,14 @@ class PQL(MOAgent):
                         "pcs_size": len(self.archive),
                         "epsilon": self.epsilon,
                     })
+                    if self.verbose:
+                        prefix = f'[{self.tag}] ' if self.tag else '  '
+                        print(
+                            f'{prefix}step {self.global_step}/{total_timesteps} '
+                            f'HV={hv:.4f} |archive|={len(self.archive)} '
+                            f'eps={self.epsilon:.3f}',
+                            flush=True,
+                        )
                     next_log_step += log_every
 
             # Update the ideal point globally from all visited (s, a) pairs.
@@ -502,7 +533,10 @@ class PQL(MOAgent):
                 self.final_epsilon,
             )
 
-        # Final archive update before returning
+        # Final archive update — gather Q-vectors across all visited (s, a)
+        # pairs. Don't pre-prune per state: a vector locally dominated at one
+        # state may still be globally non-dominated against the union from
+        # other states.
         all_q_vecs = set()
         for s in self.counts:
             for a in range(self.num_actions):
@@ -513,6 +547,14 @@ class PQL(MOAgent):
         self.archive |= real_pcs
         if len(self.archive) > 1:
             self.archive = get_non_dominated(self.archive)
+        # Same archive cap as the periodic block — keep the post-training
+        # archive bounded so policy extraction + scenario replay stays
+        # tractable. Decoupled from max_nd_size.
+        if (self.max_archive_size is not None
+                and len(self.archive) > self.max_archive_size):
+            self.archive = self._subsample_nd(
+                self.archive, target_size=self.max_archive_size
+            )
         return self.archive, convergence_log
 
     # ------------------------------------------------------------------
