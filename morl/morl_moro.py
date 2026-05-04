@@ -164,6 +164,8 @@ def run_moro(
     policies_df.to_csv(f'{output_folder}/policies_{file_end}.csv', index=False)
     robust_pcs_df.to_csv(f'{output_folder}/pcs_{file_end}.csv', index=False)
     conv_df.to_csv(f'{output_folder}/convergence_{file_end}.csv', index=False)
+    # Persist the Q-table
+    agent.save_q_table(f'{output_folder}/agent_{file_end}.pkl')
 
     return policies_df
 
@@ -238,4 +240,6 @@ def run_moro_lake(
     policies_df.to_csv(f'{output_folder}/policies_{file_end}.csv', index=False)
     robust_pcs_df.to_csv(f'{output_folder}/pcs_{file_end}.csv', index=False)
     conv_df.to_csv(f'{output_folder}/convergence_{file_end}.csv', index=False)
+    # Persist the Q-table
+    agent.save_q_table(f'{output_folder}/agent_{file_end}.pkl')
     return policies_df

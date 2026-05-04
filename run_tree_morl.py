@@ -12,15 +12,15 @@ from morl.morl_method_config import (
 )
 
 # ── Top-level output folder ───────────────────────────────────────────────────
-root_folder = f'./data_morl_{tree_depth}'
+root_folder = f'./tree_morl_{tree_depth}'
 
 # ── Experiment toggles ────────────────────────────────────────────────────────
 # Set a value to 1 to include that dimension in the run grid.
 
 # PQL action-evaluation method (analog of run_evo_method in run_tree_moea.py)
 run_scoring = {
-    'pareto': 0,
-    'indicator': 0,
+    'pareto': 1,
+    'indicator': 1,
     'decomposition': 1,
 }
 
@@ -46,12 +46,12 @@ def _nested():
 
 
 timestep_settings = _nested()
-timestep_settings['single']['multi_obj']['deterministic'] = 200000
-timestep_settings['single']['many_obj']['deterministic'] = 200000
-timestep_settings['multi']['multi_obj']['robust'] = 200000
-timestep_settings['multi']['many_obj']['robust'] = 200000
-timestep_settings['moro']['multi_obj']['robust'] = 200000
-timestep_settings['moro']['many_obj']['robust'] = 200000
+timestep_settings['single']['multi_obj']['deterministic'] = 100000
+timestep_settings['single']['many_obj']['deterministic'] = 100000
+timestep_settings['multi']['multi_obj']['robust'] = 100000
+timestep_settings['multi']['many_obj']['robust'] = 100000
+timestep_settings['moro']['multi_obj']['robust'] = 100000
+timestep_settings['moro']['many_obj']['robust'] = 100000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 # Objective-count-dependent settings (no moea equivalent — PQL-specific).

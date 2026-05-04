@@ -8,7 +8,7 @@ from params_config import lake_scenarios_path, slip_patterns_path
 import numpy as np
 
 
-def percentile_20(outcomes):
+def lower_tail_20(outcomes):
     return np.percentile(outcomes, 80)
 
 
@@ -18,7 +18,7 @@ def build_robustness_functions(num_obj):
             f'p20_o{i + 1}',
             kind=ScalarOutcome.MINIMIZE,
             variable_name=f'o{i + 1}',
-            function=percentile_20
+            function=lower_tail_20
         )
         for i in range(num_obj)
     ]

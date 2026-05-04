@@ -8,11 +8,11 @@ from collections import defaultdict
 import time
 
 activate_logging = 1
-root_folder = f'./data_{tree_depth}_3'
+root_folder = f'./tree_moea_{tree_depth}'
 
 run_policy = {
     'intertemporal': 1,
-    'table': 0
+    'table': 1
 }
 run_evo_method = {
     'NSGAII': 1,
@@ -21,7 +21,7 @@ run_evo_method = {
 }
 run_scenario_method = {
     'single': 0,
-    'multi': 0,
+    'multi': 1,
     'moro': 1
 }
 
@@ -54,9 +54,9 @@ nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 20000
 nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 20000
 nfe_settings['table']['multi']['multi_obj']['robust'] = 20000
 nfe_settings['table']['multi']['many_obj']['robust'] = 20000
-nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 20000
-nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 20000
-nfe_settings['table']['moro']['multi_obj']['robust'] = 20000
+nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 40000
+nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 40000
+nfe_settings['table']['moro']['multi_obj']['robust'] = 40000
 nfe_settings['table']['moro']['many_obj']['robust'] = 100000
 
 model_settings = tree()

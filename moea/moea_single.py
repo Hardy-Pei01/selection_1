@@ -11,7 +11,7 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
 
-    with SequentialEvaluator(model) as evaluator:
+    with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
         arch, conv = evaluator.optimize(
             algorithm=params.algorithm,
             nfe=params.nfe,
@@ -27,7 +27,8 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
         conv['time'] = time.strftime("%H:%M:%S", time.gmtime(elapsed))
         arch['reference_scenario'] = ref_num
 
-    arch.to_csv(f'{params.output_folder}/{archiveName}_{ref_num}.csv')
-    conv.to_csv(f'{params.output_folder}/{convergenceName}_{ref_num}.csv')
+    suffix = f'_{ref_num}' if ref_num is not None else ''
+    arch.to_csv(f'{params.output_folder}/{archiveName}{suffix}.csv')
+    conv.to_csv(f'{params.output_folder}/{convergenceName}{suffix}.csv')
 
     return arch, conv

@@ -60,4 +60,4 @@ def main(path):
 
 
 if __name__ == "__main__":
-    main("fruits/depth8_dim6.csv")
+    main("trees/depth9_dim2.csv")

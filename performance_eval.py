@@ -1,9 +1,10 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from morl_baselines.common.performance_indicators import hypervolume
+from moocore import hypervolume as _mc_hv
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 data_dir = "./tree_data/moea_observable"
@@ -21,8 +22,42 @@ CONDITIONS = [
 ALGOS       = ["IBEA", "NSGAII", "MOEAD"]
 ALGO_LABELS = {"IBEA": "IBEA", "NSGAII": "NSGA-II", "MOEAD": "MOEA/D"}
 
+# Cap on archive size before HV. moocore HV is doubly-exponential in dim;
+# 6-obj archives in this codebase reach ~5–17k vectors and HV at that scale
+# can take minutes per call. 1000 is well above the diversity ceiling for
+# 6-obj fronts, so the cap doesn't bias rankings.
+MAX_HV_POINTS = 1000
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def crowding_subsample(arr: np.ndarray, target_size: int) -> np.ndarray:
+    """Diversity-preserving truncation, NSGA-II-style."""
+    n, d = arr.shape
+    if n <= target_size:
+        return arr
+    crowd = np.zeros(n)
+    for obj in range(d):
+        order = np.argsort(arr[:, obj])
+        crowd[order[0]] = crowd[order[-1]] = np.inf
+        rng = arr[order[-1], obj] - arr[order[0], obj]
+        if rng == 0:
+            continue
+        for i in range(1, n - 1):
+            crowd[order[i]] += (
+                (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / rng
+            )
+    keep = np.argsort(crowd)[-target_size:]
+    return arr[keep]
+
+
+def hv_max(points: np.ndarray, ref_max: np.ndarray) -> float:
+    """Hypervolume under maximisation convention. moocore is min-convention,
+    so negate both points and ref."""
+    if len(points) == 0:
+        return 0.0
+    return float(_mc_hv(-points, ref=-ref_max))
+
 
 def parse_folder(name: str):
     """
@@ -60,7 +95,9 @@ def get_objectives(df: pd.DataFrame) -> np.ndarray:
 
 # ── Collect ───────────────────────────────────────────────────────────────────
 
-# records keyed by (setting, algo, n_obj, regime) for easy lookup
+if not os.path.isdir(data_dir):
+    sys.exit(f'data_dir does not exist: {os.path.abspath(data_dir)}')
+
 records = {}
 
 for folder_name in sorted(os.listdir(data_dir)):
@@ -80,13 +117,23 @@ for folder_name in sorted(os.listdir(data_dir)):
     if objectives.ndim != 2 or objectives.size == 0:
         continue
 
+    n_solutions = len(objectives)
+    if n_solutions > MAX_HV_POINTS:
+        objectives = crowding_subsample(objectives, MAX_HV_POINTS)
+
     ref_point = np.full(objectives.shape[1], -1.0)
-    hv_val = hypervolume(ref_point, [tuple(r) for r in objectives])
+    hv_val = hv_max(objectives, ref_point)
 
     records[(setting, algo, n_obj, regime)] = {
-        "num_solutions": len(objectives),
+        "num_solutions": n_solutions,   # original archive size (pre-cap)
         "hypervolume":   hv_val,
     }
+
+if not records:
+    sys.exit(
+        f'No matching folders under {os.path.abspath(data_dir)}.\n'
+        f'Expected layout: <data_dir>/{{intertemporal,table}}_{{algo}}_single_{{n_obj}}_{{observable,non_observable}}/'
+    )
 
 
 # ── Plot: one figure per n_obj, HV + archive size side by side ───────────────

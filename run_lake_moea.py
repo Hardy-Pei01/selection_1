@@ -93,6 +93,11 @@ if __name__ == '__main__':
                         if not value_5:
                             continue
 
+                        if key_3 == 'single' and key_5 == 'robust':
+                            continue
+                        if key_3 in ('multi', 'moro') and key_5 == 'deterministic':
+                            continue
+
                         num_obj = num_objectives[key_4]
                         name = f'{key_1}_{key_2}_{key_3}_{num_obj}'
                         nfe = nfe_settings[key_1][key_3][key_4][key_5]

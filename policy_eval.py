@@ -143,19 +143,17 @@ def evaluate_lake_policies_across_scenarios(agent, env_factory, n_scenarios,
     return pd.DataFrame(rows)
 
 
-def compute_robustness(eval_df, n_obj):
+def compute_robustness(eval_df, n_obj, percentile=20):
+    """
+    Aggregate per-(policy, scenario) rewards into one robust score per
+    policy via the given percentile across scenarios.
+    """
     obj_cols = [f'o{i + 1}' for i in range(n_obj)]
-
     if eval_df.empty:
         return pd.DataFrame(columns=['policy_id'] + obj_cols)
-
-    records = []
-    for pol_id, group in eval_df.groupby('policy_id'):
-        row = {'policy_id': pol_id}
-        for col in obj_cols:
-            row[col] = np.percentile(group[col].values, 20)
-        records.append(row)
-    return pd.DataFrame(records)
+    return (eval_df.groupby('policy_id')[obj_cols]
+            .quantile(percentile / 100.0)
+            .reset_index())
 
 
 def evaluate_table_archive_robust(archive_path, depth, n_obj,

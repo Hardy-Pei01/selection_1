@@ -113,7 +113,7 @@ def main(
         dominate_seed=dominate_seed,
     )
 
-    output_path = f"fruits/depth{depth}_dim{reward_dim}.csv"
+    output_path = f"trees/depth{depth}_dim{reward_dim}.csv"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path, index=False)
 

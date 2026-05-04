@@ -26,8 +26,8 @@ def generate_slip_patterns(depth, n_scenarios=N_SCENARIOS,
 def main(depth):
     patterns, slip_probs = generate_slip_patterns(depth)
 
-    os.makedirs('fruits', exist_ok=True)
-    out_path = f'fruits/slip_patterns_depth{depth}.npy'
+    os.makedirs('trees', exist_ok=True)
+    out_path = f'trees/slip_patterns_depth{depth}.npy'
     np.save(out_path, patterns)
 
     print(f"depth={depth}: {patterns.shape[0]} scenarios, "

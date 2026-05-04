@@ -101,5 +101,7 @@ def run_morl_single(
     conv_df.to_csv(
         f'{output_folder}/convergence_{file_end}{suffix}.csv', index=False
     )
+    # Persist the trained Q-table so policies can be re-extracted later
+    agent.save_q_table(f'{output_folder}/agent_{file_end}{suffix}.pkl')
 
     return policies_df

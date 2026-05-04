@@ -1,5 +1,5 @@
 """Pareto Q-Learning."""
-
+import pickle
 import numbers
 from itertools import product
 from typing import Callable
@@ -9,12 +9,12 @@ import gymnasium as gym
 import numpy as np
 
 from morl_baselines.common.morl_algorithm import MOAgent
-from morl_baselines.common.pareto import get_non_dominated as _get_nd_morl
 from morl_baselines.common.performance_indicators import hypervolume
 from morl_baselines.common.utils import linearly_decaying_value
 from moocore import is_nondominated as _moocore_is_nd
 
 
+# Faster pareto pruning via moocore
 def _nd_mask(arr: np.ndarray) -> np.ndarray:
     """Boolean mask: True for non-dominated rows under maximisation."""
     if arr.shape[0] <= 1:
@@ -586,8 +586,14 @@ class PQL(MOAgent):
         return get_non_dominated(candidates)
 
     def get_config(self):
+        # Both TwoLakeEnv and FruitTreeEnv don't register a gym spec, so
+        # `self.env.unwrapped.spec` is None on those. Fall back to the class
+        # name for the env_id field.
+        env_unwrapped = self.env.unwrapped
+        spec = getattr(env_unwrapped, "spec", None)
+        env_id = spec.id if spec is not None else type(env_unwrapped).__name__
         return {
-            "env_id": self.env.unwrapped.spec.id if hasattr(self.env.unwrapped, "spec") else "FruitTree",
+            "env_id": env_id,
             "gamma": self.gamma,
             "initial_epsilon": self.initial_epsilon,
             "epsilon_decay_steps": self.epsilon_decay_steps,
@@ -602,3 +608,81 @@ class PQL(MOAgent):
             "robust": self.robust,
             "max_nd_size": self.max_nd_size,
         }
+
+    # ------------------------------------------------------------------
+    # Q-table persistence
+    # ------------------------------------------------------------------
+
+    def save_q_table(self, path: str):
+        """
+        Pickle the four Q-learning structures plus archive and metadata.
+        """
+        # Convert defaultdicts to plain dicts so pickle doesn't need the
+        # original lambda factories at load time.
+        payload = {
+            "version": 1,
+            "config": self.get_config(),
+            "action_eval": getattr(self, "action_eval", None),
+            "global_step": self.global_step,
+            "ideal_point": self.ideal_point.copy(),
+            "archive": set(self.archive),
+            "counts": {s: arr.copy() for s, arr in self.counts.items()},
+            "non_dominated": {
+                s: [set(per_a) for per_a in cells]
+                for s, cells in self.non_dominated.items()
+            },
+            "nd_decomp": {
+                s: [set(per_a) for per_a in cells]
+                for s, cells in self.nd_decomp.items()
+            },
+            "avg_reward": {s: arr.copy() for s, arr in self.avg_reward.items()},
+        }
+        if self.robust and hasattr(self, "reward_samples"):
+            payload["reward_samples"] = {
+                s: [list(per_a) for per_a in cells]
+                for s, cells in self.reward_samples.items()
+            }
+        with open(path, "wb") as f:
+            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load_q_table(self, path: str):
+        """
+        Restore Q-table structures from a save_q_table file.
+        """
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        if payload.get("version") != 1:
+            raise ValueError(f"Unsupported q-table format version: {payload.get('version')}")
+
+        cfg = payload["config"]
+        if cfg["num_objectives"] != self.num_objectives:
+            raise ValueError(
+                f"num_objectives mismatch: saved={cfg['num_objectives']}, "
+                f"current={self.num_objectives}"
+            )
+        if cfg["num_actions"] != self.num_actions:
+            raise ValueError(
+                f"num_actions mismatch: saved={cfg['num_actions']}, "
+                f"current={self.num_actions}"
+            )
+
+        # Re-wrap as defaultdicts with the same factories the constructor uses.
+        d = self.num_objectives
+        a = self.num_actions
+        counts_factory = lambda: np.zeros(a)
+        nd_factory = lambda: [{tuple(np.zeros(d))} for _ in range(a)]
+        avg_factory = lambda: np.zeros((a, d))
+
+        self.counts = defaultdict(counts_factory, payload["counts"])
+        self.non_dominated = defaultdict(nd_factory, payload["non_dominated"])
+        self.nd_decomp = defaultdict(nd_factory, payload["nd_decomp"])
+        self.avg_reward = defaultdict(avg_factory, payload["avg_reward"])
+
+        if "reward_samples" in payload:
+            samples_factory = lambda: [[] for _ in range(a)]
+            self.reward_samples = defaultdict(samples_factory, payload["reward_samples"])
+
+        self.archive = set(payload["archive"])
+        self.ideal_point = np.asarray(payload["ideal_point"]).copy()
+        self.global_step = payload["global_step"]
+        self.action_eval = payload.get("action_eval")
