@@ -1,6 +1,4 @@
 import os
-import pandas as pd
-import numpy as np
 from params_config import (default_tree_scenario, default_tree_scenario_robust,
                            default_lake_scenario, tree_multi_obj, tree_many_obj,
                            tree_n_scenarios, tree_reference_scenarios,
@@ -11,7 +9,6 @@ from ema_workbench import (Scenario)
 from moea.algos import NSGAII, IBEA, MOEAD
 from policy_eval import evaluate_table_archive_robust
 from fruit_tree import FruitTreeEnv
-from count_non_dominated import is_nondominated
 
 
 class base_params(object):
@@ -99,23 +96,6 @@ def moea_multi(model, params, start_time, problem):
                                  start_time=start_time)
         archives.append(results[0])
         convergences.append(results[1])
-
-    if archives:
-        non_empty = [a for a in archives if not a.empty]
-        if non_empty:
-            combined = pd.concat(non_empty, ignore_index=True)
-            obj_cols = [c for c in combined.columns if c.startswith('o')]
-            combined = combined.drop_duplicates(subset=obj_cols)
-            # Pareto-prune the pooled set
-
-            rewards = combined[obj_cols].values
-            nd_mask = is_nondominated(-rewards)
-            combined = combined[nd_mask].reset_index(drop=True)
-            file_end = output_file_end(model, params)
-            combined.to_csv(
-                f'{params.output_folder}/archives_{file_end}_combined.csv',
-                index=False
-            )
 
     return archives, convergences
 

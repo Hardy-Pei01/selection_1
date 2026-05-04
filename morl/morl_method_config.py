@@ -1,5 +1,3 @@
-import pandas as pd
-
 import morl.morl_single as single
 import morl.morl_moro as moro
 from fruit_tree import FruitTreeEnv
@@ -111,7 +109,7 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
 
     archives = []
     for ref_num, ref in enumerate(refs):
-        scenario_index = ref['scenario_index']  # was ref['scenario_seed']
+        scenario_index = ref['scenario_index']
         print(f'  Reference scenario {ref_num} (scenario_index={scenario_index})')
 
         env = FruitTreeEnv(
@@ -134,18 +132,6 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
             start_time=start_time,
         )
         archives.append(policies_df)
-
-    # Combine all per-reference archives into one file — mirrors moea_multi
-    # collecting archives across reference scenarios.
-    if label_refs:
-        non_empty = [p for p in archives if not p.empty]
-        if non_empty:
-            combined = pd.concat(non_empty, ignore_index=True)
-        else:
-            combined = pd.DataFrame()
-        combined.to_csv(
-            f'{params.output_folder}/policies_{file_end}_combined.csv', index=False
-        )
 
     return archives
 
@@ -198,13 +184,6 @@ def morl_multi_lake(params, ref_point, n_obj, start_time):
             start_time=start_time,
         )
         archives.append(policies_df)
-
-    if label_refs:
-        non_empty = [p for p in archives if not p.empty]
-        combined = pd.concat(non_empty, ignore_index=True) if non_empty else pd.DataFrame()
-        combined.to_csv(
-            f'{params.output_folder}/policies_{file_end}_combined.csv', index=False
-        )
 
     return archives
 
