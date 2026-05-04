@@ -15,8 +15,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 depth = '10_2'
-data_dir = f"./tree_data/moea_observable"
-out_dir = "./tree_figures"
+data_dir = f"./lake_data/moea_deterministic"
+out_dir = "./lake_figures"
 
 
 def find_convergence_file(folder_path: str):

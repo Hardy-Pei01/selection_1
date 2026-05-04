@@ -2,7 +2,7 @@ import numpy as np
 import gymnasium as gym
 from scipy.optimize import brentq
 
-LAKE_BINS = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 4.0, 12.0])
+LAKE_BINS = np.array([0.0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 1.0, 3.0, 12.0])
 REDUCED_EMISSIONS = np.array([0.00, 0.02, 0.04, 0.06, 0.08, 0.10])
 
 
@@ -32,7 +32,6 @@ class TwoLakeEnv(gym.Env):
             Pcrit1=None,
             Pcrit2=None,
             num_obj=2,
-            rl=False
     ):
         super().__init__()
 
@@ -58,7 +57,6 @@ class TwoLakeEnv(gym.Env):
         self.inflow_seed1 = inflow_seed1
         self.inflow_seed2 = inflow_seed2
         self.num_obj = num_obj
-        self.rl = rl
 
         # --- Critical thresholds (solved once at construction) ---
         self.Pcrit1 = Pcrit1 if Pcrit1 is not None else \
@@ -76,11 +74,9 @@ class TwoLakeEnv(gym.Env):
             self._ln_mean, self._ln_sigma, size=total_years)
 
         # --- Spaces ---
-        # Actions: emission level for each lake, held for years_per_action years
-        if self.rl:
-            self.action_space = gym.spaces.MultiDiscrete([6, 6])
-        else:
-            self.action_space = gym.spaces.MultiDiscrete([11, 11])
+        # Actions: emission level for each lake, held for years_per_action years.
+        # 6 discrete levels mapped to REDUCED_EMISSIONS = [0.00, 0.02, ..., 0.10].
+        self.action_space = gym.spaces.MultiDiscrete([6, 6])
 
         # Observations: [P_lake1, P_lake2]
         n_bins = len(LAKE_BINS) - 1
@@ -121,12 +117,8 @@ class TwoLakeEnv(gym.Env):
         return self._obs(), {}
 
     def step(self, action):
-        if self.rl:
-            u1 = REDUCED_EMISSIONS[action[0]]
-            u2 = REDUCED_EMISSIONS[action[1]]
-        else:
-            u1 = action[0] / 100
-            u2 = action[1] / 100
+        u1 = REDUCED_EMISSIONS[int(action[0])]
+        u2 = REDUCED_EMISSIONS[int(action[1])]
 
         # --- Simulate years_per_action years of lake dynamics ---
         X1_traj, X2_traj, X1_new, X2_new = self._simulate(u1, u2)

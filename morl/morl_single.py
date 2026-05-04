@@ -5,7 +5,7 @@ import pandas as pd
 from morl.pql import PQL
 from params_config import (
     nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake,
-    archive_cap_tree, archive_cap_lake,
+    archive_cap_tree, archive_cap_lake, gamma_tree, gamma_lake,
 )
 from policy_eval import extract_policy, extract_lake_policy
 
@@ -27,6 +27,7 @@ def run_morl_single(
     is_tree = hasattr(env.unwrapped, 'tree_depth')
     max_nd_size = None if is_tree else nd_size_cap_lake
     max_archive_size = archive_cap_tree if is_tree else archive_cap_lake
+    gamma = gamma_tree if is_tree else gamma_lake
 
     tag_parts = [file_end]
     if ref_num is not None:
@@ -36,7 +37,7 @@ def run_morl_single(
     agent = PQL(
         env=env,
         ref_point=ref_point,
-        gamma=1.0,
+        gamma=gamma,
         initial_epsilon=1.0,
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05,

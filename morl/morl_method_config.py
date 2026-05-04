@@ -4,7 +4,7 @@ from fruit_tree import FruitTreeEnv
 from two_lake import TwoLakeEnv
 from params_config import default_tree_scenario, default_tree_scenario_robust, \
     slip_patterns_path, default_lake_scenario, tree_reference_scenarios, \
-    lake_reference_scenarios
+    lake_reference_scenarios, total_years, years_per_action
 
 
 class base_morl_params:
@@ -90,7 +90,8 @@ def _build_lake_env(ref, n_obj):
         Pcrit1=ref.get('Pcrit1', None),
         Pcrit2=ref.get('Pcrit2', None),
         num_obj=n_obj,
-        rl=True
+        total_years=total_years,
+        years_per_action=years_per_action,
     )
 
 

@@ -17,25 +17,25 @@ root_folder = './morl_lake'
 # ── Experiment toggles ────────────────────────────────────────────────────────
 
 run_scoring = {
-    'pareto': 0,
-    'indicator': 0,
+    'pareto': 1,
+    'indicator': 1,
     'decomposition': 1,
 }
 
 run_scenario_method = {
-    'single': 0,
+    'single': 1,
     'multi': 0,
-    'moro': 1,
+    'moro': 0,
 }
 
 obj_uncertain = {
-    'multi_obj': 1,
-    'many_obj': 1,
+    'multi_obj': 0,
+    'many_obj': 1
 }
 
 param_uncertain = {
-    'deterministic': 0,
-    'robust': 1,
+    'deterministic': 1,
+    'robust': 0,
 }
 
 
@@ -46,12 +46,12 @@ def _nested():
 
 
 timestep_settings = _nested()
-timestep_settings['single']['multi_obj']['deterministic'] = 100000
-timestep_settings['single']['many_obj']['deterministic'] = 100000
-timestep_settings['multi']['multi_obj']['robust'] = 100000
-timestep_settings['multi']['many_obj']['robust'] = 100000
-timestep_settings['moro']['multi_obj']['robust'] = 100000
-timestep_settings['moro']['many_obj']['robust'] = 100000
+timestep_settings['single']['multi_obj']['deterministic'] = 10000
+timestep_settings['single']['many_obj']['deterministic'] = 10000
+timestep_settings['multi']['multi_obj']['robust'] = 10000
+timestep_settings['multi']['many_obj']['robust'] = 10000
+timestep_settings['moro']['multi_obj']['robust'] = 10000
+timestep_settings['moro']['many_obj']['robust'] = 10000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 

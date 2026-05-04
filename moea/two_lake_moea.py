@@ -3,10 +3,11 @@ from two_lake import TwoLakeEnv
 
 
 def get_emission(xt, c1, c2, r1, r2, w1):
-    """Single-lake cubic RBF policy — mirrors the original EMA lake DPS."""
+    """Single-lake cubic RBF policy."""
     rule = w1 * (abs(xt - c1) / r1) ** 3 + (1 - w1) * (abs(xt - c2) / r2) ** 3
     u = float(np.clip(rule, 0.0, 0.10))
-    return int(round(u * 100))
+    # Snap to nearest of {0.00, 0.02, 0.04, 0.06, 0.08, 0.10}; return the index.
+    return int(round(u / 0.02))
 
 
 def _run_episode(env, actions):
@@ -14,7 +15,7 @@ def _run_episode(env, actions):
     env.reset()
     total_rewards = np.zeros(env.num_obj, dtype=np.float32)
     for u1, u2 in actions:
-        action = np.array([u1, u2], dtype=np.float32)
+        action = np.array([u1, u2], dtype=np.int64)
         _, rewards, _, _, _ = env.step(action)
         total_rewards -= np.array(rewards, dtype=np.float32)
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(env.num_obj)}
@@ -55,7 +56,7 @@ def two_lake_dps(num_obj, alpha, delta, total_years, years_per_action, **kwargs)
         X1, X2 = env.X1, env.X2
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
-        _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))
+        _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.int64))
         total_rewards -= np.array(rewards, dtype=np.float32)
 
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(num_obj)}
@@ -111,7 +112,7 @@ def two_lake_dps_robust(num_obj, alpha, delta, total_years, years_per_action,
         X1, X2 = env.X1, env.X2
         u1 = get_emission(X1, c1_1, c2_1, r1_1, r2_1, w1_1)
         u2 = get_emission(X2, c1_2, c2_2, r1_2, r2_2, w1_2)
-        _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.float32))
+        _, rewards, _, _, _ = env.step(np.array([u1, u2], dtype=np.int64))
         total_rewards -= np.array(rewards, dtype=np.float32)
 
     return {f'o{i + 1}': float(total_rewards[i]) for i in range(num_obj)}

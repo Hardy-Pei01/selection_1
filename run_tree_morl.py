@@ -51,7 +51,7 @@ timestep_settings['single']['many_obj']['deterministic'] = 100000
 timestep_settings['multi']['multi_obj']['robust'] = 100000
 timestep_settings['multi']['many_obj']['robust'] = 100000
 timestep_settings['moro']['multi_obj']['robust'] = 100000
-timestep_settings['moro']['many_obj']['robust'] = 100000
+timestep_settings['moro']['many_obj']['robust'] = 200000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 # Objective-count-dependent settings (no moea equivalent — PQL-specific).

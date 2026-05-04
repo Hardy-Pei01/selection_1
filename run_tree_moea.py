@@ -16,18 +16,18 @@ run_policy = {
 }
 run_evo_method = {
     'NSGAII': 1,
-    'IBEA': 1,
-    'MOEAD': 1
+    'IBEA': 0,
+    'MOEAD': 0
 }
 run_scenario_method = {
     'single': 0,
     'multi': 1,
-    'moro': 1
+    'moro': 0
 }
 
 obj_uncertain = {
     'multi_obj': 1,
-    'many_obj': 1
+    'many_obj': 0
 }
 
 param_uncertain = {

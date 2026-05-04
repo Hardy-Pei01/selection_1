@@ -14,6 +14,7 @@ tree_n_scenarios = 50
 nd_size_cap_tree = 2 ** (tree_depth + 3)
 nd_update_freq_tree = 1
 archive_cap_tree = nd_size_cap_tree
+gamma_tree = 1.0
 lake_multi_obj = 2
 lake_many_obj = 6
 total_years = 100
@@ -21,8 +22,9 @@ years_per_action = 5
 lake_scenarios_path = './lakes/lake_scenarios.npy'
 lake_n_scenarios = 50
 nd_size_cap_lake = 256
-nd_update_freq_lake = 5
-archive_cap_lake = 5000
+nd_update_freq_lake = 2
+archive_cap_lake = 1500
+gamma_lake = 0.95
 
 multi_objs_tree_params = {
     'depth': tree_depth,
@@ -137,16 +139,16 @@ default_lake_scenario = {
 }
 
 lake_reference_scenarios = [
-    {'b1': 0.40, 'q1': 2.2, 'b2': 0.13, 'q2': 3.2,
-     'inflow_seed1': 8240, 'inflow_seed2': 2250,
-     'Pcrit1': _pcrit(0.4, 2.2), 'Pcrit2': _pcrit(0.13, 3.2)},
-    {'b1': 0.15, 'q1': 2.3, 'b2': 0.22, 'q2': 3.6,
-     'inflow_seed1': 8424, 'inflow_seed2': 1726,
-     'Pcrit1': _pcrit(0.15, 2.3), 'Pcrit2': _pcrit(0.22, 3.6)},
-    {'b1': 0.13, 'q1': 2.3, 'b2': 0.13, 'q2': 2.0,
-     'inflow_seed1': 3020, 'inflow_seed2': 4330,
-     'Pcrit1': _pcrit(0.13, 2.3), 'Pcrit2': _pcrit(0.13, 2.0)},
-    {'b1': 0.28, 'q1': 2.8, 'b2': 0.28, 'q2': 2.9,
-     'inflow_seed1': 899, 'inflow_seed2': 865,
-     'Pcrit1': _pcrit(0.28, 2.8), 'Pcrit2': _pcrit(0.28, 2.9)},
+    {'b1': 0.101, 'q1': 2.057, 'b2': 0.229, 'q2': 3.198,
+     'inflow_seed1': 9593, 'inflow_seed2': 6799,
+     'Pcrit1': _pcrit(0.101, 2.057), 'Pcrit2': _pcrit(0.229, 3.198)},
+    {'b1': 0.176, 'q1': 2.075, 'b2': 0.101, 'q2': 2.227,
+     'inflow_seed1': 6643, 'inflow_seed2': 4099,
+     'Pcrit1': _pcrit(0.176, 2.075), 'Pcrit2': _pcrit(0.101, 2.227)},
+    {'b1': 0.252, 'q1': 3.014, 'b2': 0.277, 'q2': 3.896,
+     'inflow_seed1': 2858, 'inflow_seed2': 2076,
+     'Pcrit1': _pcrit(0.252, 3.014), 'Pcrit2': _pcrit(0.277, 3.896)},
+    {'b1': 0.394, 'q1': 2.124, 'b2': 0.106, 'q2': 2.034,
+     'inflow_seed1': 6967, 'inflow_seed2': 4471,
+     'Pcrit1': _pcrit(0.394, 2.124), 'Pcrit2': _pcrit(0.106, 2.034)},
 ]

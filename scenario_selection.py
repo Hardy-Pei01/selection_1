@@ -1,40 +1,67 @@
 """
 scenario_selection.py
 ─────────────────────
-Eker–Kwakkel (2018) / Bartholomew–Kwakkel (2020) reference-scenario selection,
-adapted for the two-lake problem.
+Faithful Python port of the original three-stage scenario-selection
+procedure from Bartholomew & Kwakkel (2020), as implemented in
+github.com/eebart/RobustDecisionSupportComparison/scenario_selection/.
 
-Single output file, valid for both 2-obj and 6-obj multi-scenario MORDM runs.
-Rationale: the lakes are independent, the env always uses all 6 deep-uncertainty
-values regardless of num_obj, and selection in 6-obj outcome space implies
-policy-relevance for lake 1 alone (the 2-obj sub-problem) since both lakes
-bad ⇒ lake 1 bad. Diversity in 6-D projects acceptably onto the 2-D subspace
-when the dimensions are independent.
+Procedure (verified against the original notebooks):
 
-Procedure:
-  1. Generate N LHS samples over the 6 deep uncertainties.
-  2. Re-evaluate every solution from a MORDM archive, env always at num_obj=6.
-  3. Aggregate per scenario: median outcome vector across the archive.
-  4. Filter to policy-relevant scenarios — all 6 outcomes in undesired half
-     (env returns all rewards in maximize-direction, so undesired = below median).
-  5. Pick K=4 maximally diverse scenarios via Carlsen et al. (2016) metric
-     (w=0.5) over normalised outcome distances. Exhaustive search if
-     (M choose K) ≤ 1e6, otherwise greedy farthest-point + hill-climb.
+  Stage 1 (was ScenarioSelection.ipynb):
+    a. Sample N_pol random policies from the lever space.
+    b. Sample N_sc deep-uncertainty scenarios via LHS.
+    c. Run every (policy × scenario) experiment ⇒ N_pol × N_sc outcomes.
+    d. Apply a *policy-relevance filter* to the per-experiment outcomes.
+       Three options, matching the original notebook:
+         · 'mean'   — keep experiments where every outcome is in the
+                      undesired half relative to its mean across all
+                      experiments.
+         · 'median' — same with median (this is the option Eker–Kwakkel
+                      recommend, but Bartholomew's thesis primarily uses
+                      'prim').
+         · 'prim'   — keep experiments inside a hardcoded PRIM box
+                      (extracted from a prior scenario-discovery run).
+
+  Stage 2 (was MaxDiverseSelect.py):
+    e. Normalise the outcome columns of the filtered experiments to [0, 1]
+       per outcome.
+    f. For each (M choose K) subset of the filtered experiments compute
+       pairwise Euclidean distance over normalised outcomes; aggregate via
+       Carlsen et al. (2016)'s weighted min+mean diversity, w=0.5.
+    g. Return the K-subset with maximum diversity. Exhaustive search.
+
+  Stage 3 (was ScenarioVisualization.ipynb):
+    h. Read the (b1, q1, b2, q2, inflow_seed1, inflow_seed2) uncertainty
+       values for the chosen K experiments — these are the K reference
+       scenarios for multi-scenario MORDM.
+
+Lake-specific notes:
+  - The original was built for a single-lake problem (5 deep uncertainties:
+    b, q, mean, stdev, delta). Our two-lake env has 6 (b1, q1, b2, q2,
+    inflow_seed1, inflow_seed2). The procedure is otherwise identical.
+  - The 6 deep uncertainties drive the env via TwoLakeEnv constructor args.
+    Pcrit values are derived from b, q (computed inside TwoLakeEnv if not
+    provided), so they don't need to be sampled.
 
 Usage:
-  python scenario_selection.py --archive ARCHIVE.csv --out selected.csv
+  python scenario_selection.py --filter mean --n-scenarios 500 --n-policies 10 --k 4
+  python scenario_selection.py --filter prim --prim-box prim_box.json
 """
 
 import argparse
+import json
 from itertools import combinations
+from math import comb
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.spatial.distance import pdist
 
 from two_lake import TwoLakeEnv
+from params_config import total_years, years_per_action
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# ── Lake configuration ────────────────────────────────────────────────────────
 
 UNCERTAINTY_BOUNDS = {
     "b1":           (0.10, 0.45),
@@ -46,11 +73,38 @@ UNCERTAINTY_BOUNDS = {
 }
 INT_DIMS = {"inflow_seed1", "inflow_seed2"}
 
-# All env rewards are maximize-direction.
-OUTCOME_MAXIMIZE = True
+# Lake env constants
+TOTAL_YEARS = 100
+YEARS_PER_ACTION = 5
+N_GYM_STEPS = TOTAL_YEARS // YEARS_PER_ACTION
+N_ACTIONS_PER_LEVEL = 6  # 0..5 indexes into REDUCED_EMISSIONS
+
+# Lake env outcomes are all max-direction (positive utility/reliability,
+# negative inertia returned by env.step). For the policy-relevance filter,
+# "undesired" = the lower half (smaller is worse).
+OUTCOME_NAMES_2OBJ = ["o1", "o2"]
+OUTCOME_NAMES_6OBJ = ["o1", "o2", "o3", "o4", "o5", "o6"]
 
 
-# ── LHS sampling over the deep-uncertainty box ────────────────────────────────
+# ── Stage 1a: sample policies (intertemporal) ─────────────────────────────────
+
+def sample_random_intertemporal_policies(n_policies: int,
+                                          rng: np.random.Generator) -> np.ndarray:
+    """Each policy is N_GYM_STEPS random emission decisions per lake, drawn
+    uniformly from {0, 1, …, 5}. Returns shape (n_policies, n_steps, 2).
+
+    Original (cell 4): `sample_levers(model, n_samples=nr_policies)` — i.e.
+    samples from EMA Workbench's lever space. For our discrete intertemporal
+    formulation this is uniform over the integer lever range.
+    """
+    return rng.integers(
+        low=0, high=N_ACTIONS_PER_LEVEL,
+        size=(n_policies, N_GYM_STEPS, 2),
+        endpoint=False,
+    )
+
+
+# ── Stage 1b: LHS over deep uncertainties ────────────────────────────────────
 
 def lhs(n_samples: int, n_dims: int, rng: np.random.Generator) -> np.ndarray:
     """Latin hypercube sample on [0, 1]^n_dims, shape (n_samples, n_dims)."""
@@ -61,46 +115,43 @@ def lhs(n_samples: int, n_dims: int, rng: np.random.Generator) -> np.ndarray:
     return u
 
 
-def generate_scenarios(n: int, seed: int = 42) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
+def generate_scenarios(n: int, rng: np.random.Generator) -> pd.DataFrame:
     u = lhs(n, len(UNCERTAINTY_BOUNDS), rng)
     cols = {}
     for j, (name, (lo, hi)) in enumerate(UNCERTAINTY_BOUNDS.items()):
         if name in INT_DIMS:
-            # +1 because hi is inclusive for integers
             cols[name] = (lo + u[:, j] * (hi - lo + 1)).astype(int)
         else:
             cols[name] = lo + u[:, j] * (hi - lo)
     return pd.DataFrame(cols)
 
 
-# ── Archive loading & evaluation ──────────────────────────────────────────────
+# ── Stage 1c: run experiments (every policy × every scenario) ────────────────
 
-def load_intertemporal_archive(path: str) -> list[list[tuple[int, int]]]:
-    """Each row → list of (u1, u2) actions. Skips outcome/metadata columns."""
-    df = pd.read_csv(path)
-    n_steps = sum(c.startswith("u1_") for c in df.columns)
-    if n_steps == 0:
-        raise ValueError(f"No 'u1_*' columns in {path}; is this an intertemporal archive?")
-    archive = []
-    for _, row in df.iterrows():
-        archive.append([(int(row[f"u1_{i}"]), int(row[f"u2_{i}"])) for i in range(n_steps)])
-    return archive
-
-
-def _run_episode(env, actions, num_obj: int) -> np.ndarray:
+def _run_episode(env, action_seq, num_obj: int) -> np.ndarray:
     env.reset()
     total = np.zeros(num_obj, dtype=np.float64)
-    for u1, u2 in actions:
+    for u1, u2 in action_seq:
         _, r, _, _, _ = env.step(np.array([u1, u2]))
         total += r
     return total
 
 
-def reevaluate_all(archive, scenarios_df, num_obj: int) -> np.ndarray:
-    """→ shape (n_scenarios, n_archive, num_obj). Builds env once per scenario."""
-    out = np.empty((len(scenarios_df), len(archive), num_obj))
-    for s_idx in range(len(scenarios_df)):
+def run_experiments(policies: np.ndarray, scenarios_df: pd.DataFrame,
+                    num_obj: int) -> pd.DataFrame:
+    """Replay every policy under every scenario and return a long-form
+    DataFrame: one row per (policy, scenario) experiment, columns are the
+    deep-uncertainty values + outcome values (o1..oN) + indices.
+
+    Mirrors the original `perform_experiments(model, nr_experiments,
+    policies=policies)` call which produces an `(experiments, outcomes)` pair
+    where `experiments` has one row per (policy, scenario) and `outcomes` is
+    a dict of arrays of length n_pol*n_sc.
+    """
+    n_pol = policies.shape[0]
+    n_sc = len(scenarios_df)
+    rows = []
+    for s_idx in range(n_sc):
         s = scenarios_df.iloc[s_idx]
         env = TwoLakeEnv(
             b1=float(s["b1"]), q1=float(s["q1"]),
@@ -108,64 +159,120 @@ def reevaluate_all(archive, scenarios_df, num_obj: int) -> np.ndarray:
             inflow_seed1=int(s["inflow_seed1"]),
             inflow_seed2=int(s["inflow_seed2"]),
             num_obj=num_obj,
+            total_years=total_years,
+            years_per_action=years_per_action,
         )
-        for p_idx, actions in enumerate(archive):
-            out[s_idx, p_idx] = _run_episode(env, actions, num_obj)
-    return out
+        for p_idx in range(n_pol):
+            outcomes = _run_episode(env, policies[p_idx], num_obj)
+            row = {
+                "policy_id": p_idx,
+                "scenario_id": s_idx,
+                "b1": float(s["b1"]), "q1": float(s["q1"]),
+                "b2": float(s["b2"]), "q2": float(s["q2"]),
+                "inflow_seed1": int(s["inflow_seed1"]),
+                "inflow_seed2": int(s["inflow_seed2"]),
+            }
+            for k in range(num_obj):
+                row[f"o{k+1}"] = float(outcomes[k])
+            rows.append(row)
+    return pd.DataFrame(rows)
 
 
-# ── Selection ────────────────────────────────────────────────────────────────
+# ── Stage 1d: policy-relevance filter ─────────────────────────────────────────
 
-def filter_policy_relevant(scenario_outcomes: np.ndarray) -> np.ndarray:
-    """Mask of scenarios in the undesired half for ALL outcomes simultaneously.
+def _undesired_half_mask(experiments, obj_cols, agg_func, min_undesired=None):
+    """Return mask where at least `min_undesired` outcomes are in the
+    undesired half. Defaults to ALL outcomes (matches the original).
 
-    For maximise objectives, undesired = below median. (env rewards are all max-dir.)
+    With 6 anti-correlated objectives the strict 'all' filter often
+    retains zero experiments — see the comment in the run() function.
     """
-    medians = np.median(scenario_outcomes, axis=0)
-    return np.all(scenario_outcomes <= medians, axis=1)
+    if min_undesired is None:
+        min_undesired = len(obj_cols)
+    masks = []
+    for col in obj_cols:
+        vals = experiments[col].values
+        threshold = agg_func(vals)
+        masks.append(vals < threshold)
+    stacked = np.stack(masks, axis=0)
+    return stacked.sum(axis=0) >= min_undesired
 
 
-def normalise(arr: np.ndarray) -> np.ndarray:
+def filter_mean(experiments, obj_cols, min_undesired=None):
+    """Mean-based filter (notebook cell 6). All outcomes in undesired half
+    by default; pass `min_undesired<len(obj_cols)` to relax."""
+    return _undesired_half_mask(experiments, obj_cols, np.mean, min_undesired)
+
+
+def filter_median(experiments, obj_cols, min_undesired=None):
+    """Median-based filter (Eker–Kwakkel 2018, notebook cell 8)."""
+    return _undesired_half_mask(experiments, obj_cols, np.median, min_undesired)
+
+
+def filter_prim(experiments: pd.DataFrame, prim_box: dict) -> np.ndarray:
+    """PRIM-box filter: keep experiments whose deep-uncertainty values fall
+    inside the box defined by `prim_box`. Mirrors notebook cell 11.
+
+    `prim_box` is a dict mapping uncertainty name → (lower, upper).
+    Uncertainties not mentioned in the box are unconstrained.
+    """
+    if not prim_box:
+        raise ValueError("prim_box must be a non-empty dict.")
+    masks = []
+    for unc_name, (lo, hi) in prim_box.items():
+        if unc_name not in experiments.columns:
+            raise ValueError(f"Uncertainty {unc_name!r} not in experiments.")
+        vals = experiments[unc_name].values
+        masks.append((vals >= lo) & (vals <= hi))
+    return np.all(np.stack(masks, axis=0), axis=0)
+
+
+# ── Stage 2: normalise & diversity selection ─────────────────────────────────
+
+def normalise_outcomes(arr: np.ndarray) -> np.ndarray:
+    """Min-max normalise each column independently to [0, 1]. Mirrors
+    `normalize_out_dic` in MaxDiverseSelect.py.
+    """
     mn, mx = arr.min(axis=0), arr.max(axis=0)
     rng = np.where(mx - mn == 0, 1.0, mx - mn)
     return (arr - mn) / rng
 
 
-def carlsen_diversity(subset: np.ndarray, w: float = 0.5) -> float:
-    """D = (1-w)·min(pairwise) + w·mean(pairwise). Higher = more diverse."""
-    n = len(subset)
-    if n < 2:
-        return 0.0
-    dists = [np.linalg.norm(subset[i] - subset[j]) for i, j in combinations(range(n), 2)]
-    dists = np.array(dists)
-    return (1 - w) * dists.min() + w * dists.mean()
-
-
-def select_diverse(outcomes_norm: np.ndarray, k: int = 4, w: float = 0.5,
-                   exhaustive_cap: int = 1_000_000):
-    """Pick k indices maximising Carlsen diversity.
-
-    Uses exhaustive search if (n choose k) ≤ exhaustive_cap, otherwise falls
-    back to greedy farthest-point seeding refined by a few hill-climbing swaps.
-    Returns (indices, score, mode) where mode ∈ {'exhaustive', 'greedy'}.
+def diversity_score(subset_outcomes: np.ndarray, w: float = 0.5) -> float:
+    """Carlsen et al. (2016) weighted diversity: D = (1-w)·min + w·mean of
+    pairwise Euclidean distances. Mirrors `evaluate_diversity_single` in
+    MaxDiverseSelect.py.
     """
-    from math import comb
+    if len(subset_outcomes) < 2:
+        return 0.0
+    distances = pdist(subset_outcomes, metric="euclidean")
+    return (1 - w) * distances.min() + w * distances.mean()
+
+
+def find_maxdiverse(outcomes_norm: np.ndarray, k: int, w: float = 0.5,
+                    exhaustive_cap: int = 1_000_000):
+    """Pick k indices maximising Carlsen diversity over normalised outcomes.
+
+    Exhaustive search if (n choose k) ≤ exhaustive_cap. The original
+    MaxDiverseSelect.py does pure exhaustive search using multiprocessing
+    over batches of 1M; we keep the exhaustive path for ≤1M and fall back
+    to greedy farthest-point + hill-climbing above that to keep runtime
+    bounded on a single thread.
+    """
     n = len(outcomes_norm)
     if n < k:
         raise ValueError(f"Need ≥{k} candidates; got {n}.")
 
     if comb(n, k) <= exhaustive_cap:
-        best, best_idx = -np.inf, None
+        best_score, best_idx = -np.inf, None
         for combo in combinations(range(n), k):
-            d = carlsen_diversity(outcomes_norm[list(combo)], w=w)
-            if d > best:
-                best, best_idx = d, combo
-        return list(best_idx), best, "exhaustive"
+            d = diversity_score(outcomes_norm[list(combo)], w=w)
+            if d > best_score:
+                best_score, best_idx = d, combo
+        return list(best_idx), best_score, "exhaustive"
 
-    # ---- Greedy farthest-point seeding ----
-    # Seed with the two most distant points; then add the point whose minimum
-    # distance to the current set is largest (max-min); repeat until k.
-    rng = np.random.default_rng(0)
+    # Greedy farthest-point seeding + hill climb (kept identical to
+    # the previous version of this script — same fallback strategy).
     pairwise = np.linalg.norm(
         outcomes_norm[:, None, :] - outcomes_norm[None, :, :], axis=-1
     )
@@ -176,8 +283,7 @@ def select_diverse(outcomes_norm: np.ndarray, k: int = 4, w: float = 0.5,
         min_d = pairwise[rest][:, chosen].min(axis=1)
         chosen.append(int(rest[int(np.argmax(min_d))]))
 
-    # ---- Hill-climbing refinement: try swapping each chosen with each non-chosen ----
-    best = carlsen_diversity(outcomes_norm[chosen], w=w)
+    best = diversity_score(outcomes_norm[chosen], w=w)
     improved = True
     while improved:
         improved = False
@@ -187,77 +293,184 @@ def select_diverse(outcomes_norm: np.ndarray, k: int = 4, w: float = 0.5,
                     continue
                 trial = chosen.copy()
                 trial[slot] = cand
-                d = carlsen_diversity(outcomes_norm[trial], w=w)
+                d = diversity_score(outcomes_norm[trial], w=w)
                 if d > best + 1e-12:
                     chosen, best = trial, d
                     improved = True
     return chosen, best, "greedy"
 
 
+# ── Stage 3: extract reference scenarios from chosen experiments ──────────────
+
+def extract_reference_scenarios(experiments: pd.DataFrame,
+                                 chosen_idx: list) -> pd.DataFrame:
+    """For each of the K chosen experiments, return the (b1, q1, b2, q2,
+    inflow_seed1, inflow_seed2) values as one row of the output. Mirrors
+    cell 12 of ScenarioVisualization.ipynb (`diverse[['b','q', ...]]`).
+
+    Same scenario can appear multiple times if the diversity selection
+    happened to pick multiple (policy, scenario) experiments with the same
+    underlying scenario (rare with K=4 over hundreds of experiments).
+    Duplicates are kept — the original code keeps them too.
+    """
+    cols = list(UNCERTAINTY_BOUNDS.keys())
+    selected = experiments.iloc[chosen_idx][cols].copy().reset_index(drop=True)
+    selected.insert(0, "scenario_id", range(1, len(selected) + 1))
+    return selected
+
+
 # ── End-to-end ────────────────────────────────────────────────────────────────
 
-def run(archive_path: str, n_scenarios: int = 500,
-        k: int = 4, w: float = 0.5, seed: int = 42,
-        out_path: str = "selected_scenarios.csv"):
-    """Always evaluates at num_obj=6. The output file is valid for both 2-obj
-    and 6-obj multi-scenario MORDM runs (lakes independent → 6-obj
-    policy-relevance implies 2-obj policy-relevance)."""
-    n_obj = 6
+def run(filter_type: str = "mean",
+        prim_box: dict = None,
+        n_scenarios: int = 500,
+        n_policies: int = 10,
+        k: int = 4,
+        w: float = 0.5,
+        seed: int = 42,
+        exhaustive_cap: int = 1_000_000,
+        n_obj: int = 6,
+        min_undesired: int = None,
+        out_path: str = "lake_reference_scenarios.csv"):
+    """Three-stage Bartholomew & Kwakkel (2020) scenario selection.
 
-    print(f"Loading archive: {archive_path}")
-    archive = load_intertemporal_archive(archive_path)
-    print(f"  {len(archive)} solutions, {len(archive[0])} action steps each")
+    `filter_type` ∈ {'mean', 'median', 'prim'}. PRIM requires `prim_box`,
+    a dict mapping uncertainty name → (lower, upper).
 
-    print(f"Generating {n_scenarios} LHS scenarios...")
-    scenarios = generate_scenarios(n_scenarios, seed=seed)
+    `min_undesired` — number of outcomes that must be in the undesired half
+    for an experiment to count as policy-relevant. Defaults to all (matching
+    the original strict filter). With 6 anti-correlated lake objectives the
+    strict filter often empties the candidate set; pass e.g.
+    `min_undesired=4` to relax.
+    """
+    rng = np.random.default_rng(seed)
 
-    print(f"Re-evaluating {len(archive)} × {n_scenarios} = "
-          f"{len(archive) * n_scenarios} episodes...")
-    outcomes_3d = reevaluate_all(archive, scenarios, num_obj=n_obj)
+    # Stage 1a-b
+    print(f"Stage 1: sampling {n_policies} random intertemporal policies...")
+    policies = sample_random_intertemporal_policies(n_policies, rng)
 
-    print("Aggregating per scenario (median across archive)...")
-    per_sc = np.median(outcomes_3d, axis=1)  # (n_scenarios, n_obj)
+    print(f"  generating {n_scenarios} LHS scenarios over deep uncertainties...")
+    scenarios = generate_scenarios(n_scenarios, rng)
 
-    mask = filter_policy_relevant(per_sc)
+    # Stage 1c
+    print(f"  running {n_policies}×{n_scenarios} = {n_policies*n_scenarios} "
+          f"experiments...")
+    experiments = run_experiments(policies, scenarios, num_obj=n_obj)
+
+    obj_cols = [f"o{k+1}" for k in range(n_obj)]
+
+    if min_undesired is None:
+        min_undesired = n_obj  # strict: all outcomes in undesired half
+
+    # Stage 1d
+    print(f"  filtering by '{filter_type}' "
+          f"(min_undesired={min_undesired}/{n_obj})...")
+    if filter_type == "mean":
+        mask = filter_mean(experiments, obj_cols, min_undesired=min_undesired)
+    elif filter_type == "median":
+        mask = filter_median(experiments, obj_cols, min_undesired=min_undesired)
+    elif filter_type == "prim":
+        if prim_box is None:
+            raise ValueError(
+                "filter_type='prim' requires a prim_box dict "
+                "(use --prim-box file.json on the CLI)."
+            )
+        mask = filter_prim(experiments, prim_box)
+    else:
+        raise ValueError(f"Unknown filter_type: {filter_type!r}")
+
     M = int(mask.sum())
-    print(f"Policy-relevant subset: M = {M} of {n_scenarios} "
-          f"(expected ≈ {n_scenarios / 2**n_obj:.0f} for {n_obj} objs)")
-
+    print(f"  policy-relevant subset: M = {M} of {len(experiments)} experiments")
     if M < k:
         raise RuntimeError(
-            f"M={M} < K={k}. Increase --n-scenarios, or relax the filter "
-            f"(e.g. require only n_obj-1 outcomes in undesired half)."
+            f"M={M} < K={k}. The filter is too restrictive. With 6 anti-"
+            f"correlated objectives the strict 'all-outcomes-undesired' "
+            f"filter often retains 0 experiments. Try:\n"
+            f"  - relax via --min-undesired N (default = n_obj = {n_obj}); "
+            f"e.g. --min-undesired {max(1, n_obj-2)}\n"
+            f"  - run with --n-obj 2 (selection valid for 6-obj too since "
+            f"lakes are independent)\n"
+            f"  - use --filter prim with a prior PRIM box"
         )
 
-    relevant_idx = np.where(mask)[0]
-    relevant_outcomes = per_sc[mask]
+    filtered = experiments[mask].reset_index(drop=True)
 
-    from math import comb
+    # Stage 2
+    print(f"Stage 2: normalising outcomes and selecting K = {k} maximally "
+          f"diverse experiments...")
+    outcomes_norm = normalise_outcomes(filtered[obj_cols].values)
+
     n_combos = comb(M, k)
-    print(f"({M} choose {k}) = {n_combos:,} subsets — "
-          f"{'exhaustive' if n_combos <= 1_000_000 else 'greedy + hill-climb'}")
-    selected_local, score, mode = select_diverse(normalise(relevant_outcomes), k=k, w=w)
-    selected_global = relevant_idx[selected_local]
+    mode_str = "exhaustive" if n_combos <= exhaustive_cap else "greedy + hill-climb"
+    print(f"  ({M} choose {k}) = {n_combos:,} subsets — {mode_str}")
+    chosen_local, score, mode = find_maxdiverse(
+        outcomes_norm, k=k, w=w, exhaustive_cap=exhaustive_cap)
+    print(f"  Carlsen diversity: {score:.4f}  ({mode})")
 
-    print(f"  Carlsen diversity score: {score:.4f}  (mode: {mode})")
-    selected_df = scenarios.iloc[selected_global].copy().reset_index(drop=True)
-    selected_df.insert(0, "scenario_id", range(1, k + 1))
+    # Stage 3
+    print(f"Stage 3: extracting reference scenarios from chosen experiments...")
+    ref = extract_reference_scenarios(filtered, chosen_local)
+    print("\nSelected reference scenarios:")
+    print(ref.to_string(index=False))
 
-    print("\nSelected scenarios:")
-    print(selected_df.to_string(index=False))
-
-    selected_df.to_csv(out_path, index=False)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    ref.to_csv(out_path, index=False)
     print(f"\nSaved → {out_path}")
-    return selected_df
+    return ref
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--archive", required=True, help="Path to MORDM archive CSV (intertemporal)")
-    p.add_argument("--n-scenarios", type=int, default=500)
-    p.add_argument("--k", type=int, default=4)
-    p.add_argument("--w", type=float, default=0.5)
+    p = argparse.ArgumentParser(
+        description=("Bartholomew & Kwakkel (2020) scenario selection for "
+                     "two-lake multi-scenario MORDM. "
+                     "Faithful port of "
+                     "github.com/eebart/RobustDecisionSupportComparison/"
+                     "scenario_selection/."))
+    p.add_argument("--filter", choices=["mean", "median", "prim"],
+                   default="mean",
+                   help="Policy-relevance filter (paper's thesis uses 'prim'; "
+                        "our default is 'mean' for cases without prior PRIM).")
+    p.add_argument("--prim-box", type=str, default=None,
+                   help="JSON file with PRIM box {uncertainty: [lo, hi], ...}. "
+                        "Required if --filter prim.")
+    p.add_argument("--n-scenarios", type=int, default=500,
+                   help="LHS scenarios over deep uncertainties (paper: 500).")
+    p.add_argument("--n-policies", type=int, default=10,
+                   help="Random intertemporal policies (paper: 10).")
+    p.add_argument("--k", type=int, default=4,
+                   help="Number of reference scenarios to select (paper: 4).")
+    p.add_argument("--w", type=float, default=0.5,
+                   help="Carlsen diversity weight on mean (paper: 0.5).")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--out", default="selected_scenarios.csv")
+    p.add_argument("--exhaustive-cap", type=int, default=1_000_000,
+                   help="(M choose K) above which to use greedy fallback.")
+    p.add_argument("--n-obj", type=int, default=6, choices=[2, 6],
+                   help="Number of objectives. 6 (default) gives a selection "
+                        "valid for both 2-obj and 6-obj run grids since lakes "
+                        "are independent.")
+    p.add_argument("--min-undesired", type=int, default=None,
+                   help="Minimum number of outcomes that must be in the "
+                        "undesired half for an experiment to be policy-"
+                        "relevant. Defaults to all (n_obj). Use a smaller "
+                        "value to relax the filter when 6-obj joint filter "
+                        "empties.")
+    p.add_argument("--out", default="lake_reference_scenarios.csv")
     args = p.parse_args()
-    run(args.archive, args.n_scenarios, args.k, args.w, args.seed, args.out)
+
+    prim_box = None
+    if args.prim_box is not None:
+        with open(args.prim_box) as f:
+            raw = json.load(f)
+        prim_box = {k: tuple(v) for k, v in raw.items()}
+
+    run(filter_type=args.filter,
+        prim_box=prim_box,
+        n_scenarios=args.n_scenarios,
+        n_policies=args.n_policies,
+        k=args.k,
+        w=args.w,
+        seed=args.seed,
+        exhaustive_cap=args.exhaustive_cap,
+        n_obj=args.n_obj,
+        min_undesired=args.min_undesired,
+        out_path=args.out)

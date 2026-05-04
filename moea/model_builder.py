@@ -93,8 +93,8 @@ def inter_base_lake_model(intertemporal, params):
     n_steps = total_years // years_per_action
 
     intertemporal.levers = (
-            [IntegerParameter(f'u1_{i}', 0, 10) for i in range(n_steps)] +
-            [IntegerParameter(f'u2_{i}', 0, 10) for i in range(n_steps)]
+            [IntegerParameter(f'u1_{i}', 0, 5) for i in range(n_steps)] +
+            [IntegerParameter(f'u2_{i}', 0, 5) for i in range(n_steps)]
     )
     intertemporal.constants = params['constants']
     return intertemporal

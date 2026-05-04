@@ -8,7 +8,7 @@ from collections import defaultdict
 import time
 
 activate_logging = 1
-root_folder = f'./lake'
+root_folder = f'./lake_moea'
 
 run_policy = {
     'intertemporal': 1,
@@ -20,19 +20,19 @@ run_evo_method = {
     'MOEAD': 1
 }
 run_scenario_method = {
-    'single': 0,
+    'single': 1,
     'multi': 0,
-    'moro': 1
+    'moro': 0
 }
 
 obj_uncertain = {
     'multi_obj': 1,
-    'many_obj': 1
+    'many_obj': 0
 }
 
 param_uncertain = {
-    'deterministic': 0,
-    'robust': 1
+    'deterministic': 1,
+    'robust': 0
 }
 
 
@@ -42,9 +42,9 @@ def nested_dict():
 
 nfe_settings = nested_dict()
 nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 100000
+nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 200000
 nfe_settings['dps']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['dps']['single']['many_obj']['deterministic'] = 100000
+nfe_settings['dps']['single']['many_obj']['deterministic'] = 200000
 nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 100000
 nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 100000
 nfe_settings['dps']['multi']['multi_obj']['robust'] = 100000

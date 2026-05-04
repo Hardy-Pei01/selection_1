@@ -11,7 +11,8 @@ from policy_eval import extract_policy, extract_lake_policy, \
     evaluate_lake_policies_across_scenarios
 from params_config import slip_patterns_path, nd_size_cap_tree, \
     lake_scenarios_path, nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake, \
-    archive_cap_tree, archive_cap_lake
+    archive_cap_tree, archive_cap_lake, total_years, years_per_action, \
+    gamma_tree, gamma_lake
 
 
 class MoroFruitTreeEnv(FruitTreeEnv):
@@ -46,7 +47,8 @@ class MoroLakeEnv(TwoLakeEnv):
             Pcrit1=float(s['Pcrit1']),
             Pcrit2=float(s['Pcrit2']),
             num_obj=n_obj,
-            rl=True
+            total_years=total_years,
+            years_per_action=years_per_action,
         )
 
     def reset(self, *, seed=None, options=None):
@@ -106,7 +108,7 @@ def run_moro(
     agent = PQL(
         env=env,
         ref_point=ref_point,
-        gamma=1.0,
+        gamma=gamma_tree,
         initial_epsilon=1.0,
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05,
@@ -180,7 +182,7 @@ def run_moro_lake(
     env = MoroLakeEnv(n_obj=n_obj, scenarios_path=lake_scenarios_path)
 
     agent = PQL(
-        env=env, ref_point=ref_point, gamma=1.0,
+        env=env, ref_point=ref_point, gamma=gamma_lake,
         initial_epsilon=1.0, epsilon_decay_steps=timesteps,
         final_epsilon=0.05, num_weight_divisions=num_weight_divisions,
         neighbourhood_size=neighbourhood_size,
@@ -214,7 +216,8 @@ def run_moro_lake(
             Pcrit1=float(s['Pcrit1']),
             Pcrit2=float(s['Pcrit2']),
             num_obj=n_obj,
-            rl=True
+            total_years=total_years,
+            years_per_action=years_per_action,
         )
 
     # Multi-scenario robust re-evaluation — mirrors run_moro for tree

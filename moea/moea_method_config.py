@@ -51,17 +51,14 @@ class base_lake_params(base_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
         super().__init__(name, nfe, algo, root_folder, robust)
         if many_obj:
-            self.epsilons = [0.01, 0.01, 0.01, 0.01, 0.01, 0.01]  # 6 objectives
+            self.epsilons = [0.1, 0.1, 0.01, 0.01, 0.01, 0.01]
         else:
-            self.epsilons = [0.01, 0.01]  # 2 objectives
+            self.epsilons = [0.1, 0.01]
 
 
 class multi_lake_params(base_lake_params):
     def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
         super().__init__(name, nfe, algo, root_folder, many_obj, robust)
-        # Reference scenarios spanning the (b, q) uncertainty space.
-        # Each combines a (b1,q1,b2,q2) configuration with fixed inflow seeds
-        # so evaluations are fully deterministic within each reference.
         self.references = lake_reference_scenarios
 
 
