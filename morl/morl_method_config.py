@@ -21,20 +21,18 @@ class base_morl_params:
 class base_tree_morl_params(base_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5,
-                 neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder, robust)
         self.many_obj = many_obj
         self.num_weight_divisions = num_weight_divisions
-        self.neighbourhood_size = neighbourhood_size
 
 
 class multi_tree_morl_params(base_tree_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5, neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions, neighbourhood_size)
+                         many_obj, robust, num_weight_divisions)
 
         self.references = tree_reference_scenarios
 
@@ -42,36 +40,35 @@ class multi_tree_morl_params(base_tree_morl_params):
 class moro_tree_morl_params(base_tree_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5, neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions, neighbourhood_size)
+                         many_obj, robust, num_weight_divisions)
 
 
 # ── Parameter classes — lake ──────────────────────────────────────────────────
 
 class base_lake_morl_params(base_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5, neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder, robust)
         self.many_obj = many_obj
         self.num_weight_divisions = num_weight_divisions
-        self.neighbourhood_size = neighbourhood_size
 
 
 class multi_lake_morl_params(base_lake_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5, neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions, neighbourhood_size)
+                         many_obj, robust, num_weight_divisions)
 
         self.references = lake_reference_scenarios
 
 
 class moro_lake_morl_params(base_lake_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5, neighbourhood_size=10):
+                 many_obj, robust, num_weight_divisions=5):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions, neighbourhood_size)
+                         many_obj, robust, num_weight_divisions)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -126,7 +123,6 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
             timesteps=params.timesteps,
             ref_point=ref_point,
             num_weight_divisions=params.num_weight_divisions,
-            neighbourhood_size=params.neighbourhood_size,
             output_folder=params.output_folder,
             file_end=file_end,
             ref_num=ref_num if label_refs else None,
@@ -146,7 +142,6 @@ def morl_moro(params, ref_point, n_obj, csv_path, start_time):
         n_obj=n_obj,
         csv_path=csv_path,
         num_weight_divisions=params.num_weight_divisions,
-        neighbourhood_size=params.neighbourhood_size,
         output_folder=params.output_folder,
         file_end=file_end,
         start_time=start_time,
@@ -178,7 +173,6 @@ def morl_multi_lake(params, ref_point, n_obj, start_time):
             timesteps=params.timesteps,
             ref_point=ref_point,
             num_weight_divisions=params.num_weight_divisions,
-            neighbourhood_size=params.neighbourhood_size,
             output_folder=params.output_folder,
             file_end=file_end,
             ref_num=ref_num if label_refs else None,
@@ -197,7 +191,6 @@ def morl_moro_lake(params, ref_point, n_obj, start_time):
         ref_point=ref_point,
         n_obj=n_obj,
         num_weight_divisions=params.num_weight_divisions,
-        neighbourhood_size=params.neighbourhood_size,
         output_folder=params.output_folder,
         file_end=file_end,
         start_time=start_time,

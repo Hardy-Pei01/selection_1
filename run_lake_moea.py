@@ -11,28 +11,28 @@ activate_logging = 1
 root_folder = f'./lake_moea'
 
 run_policy = {
-    'intertemporal': 1,
+    'intertemporal': 0,
     'dps': 1
 }
 run_evo_method = {
-    'NSGAII': 1,
+    'NSGAII': 0,
     'IBEA': 1,
     'MOEAD': 1
 }
 run_scenario_method = {
-    'single': 1,
-    'multi': 0,
+    'single': 0,
+    'multi': 1,
     'moro': 0
 }
 
 obj_uncertain = {
-    'multi_obj': 1,
-    'many_obj': 0
+    'multi_obj': 0,
+    'many_obj': 1
 }
 
 param_uncertain = {
     'deterministic': 1,
-    'robust': 0
+    'robust': 1
 }
 
 
@@ -42,17 +42,17 @@ def nested_dict():
 
 nfe_settings = nested_dict()
 nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 200000
+nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 300000
 nfe_settings['dps']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['dps']['single']['many_obj']['deterministic'] = 200000
+nfe_settings['dps']['single']['many_obj']['deterministic'] = 300000
 nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 100000
-nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 100000
+nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 300000
 nfe_settings['dps']['multi']['multi_obj']['robust'] = 100000
-nfe_settings['dps']['multi']['many_obj']['robust'] = 100000
+nfe_settings['dps']['multi']['many_obj']['robust'] = 300000
 nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 100000
-nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 100000
+nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 300000
 nfe_settings['dps']['moro']['multi_obj']['robust'] = 100000
-nfe_settings['dps']['moro']['many_obj']['robust'] = 100000
+nfe_settings['dps']['moro']['many_obj']['robust'] = 300000
 
 model_settings = nested_dict()
 model_settings['intertemporal']['multi_obj']['deterministic'] = (inter_lake_model, 'interMulti')

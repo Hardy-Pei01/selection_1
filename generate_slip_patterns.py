@@ -2,7 +2,7 @@ import os
 import numpy as np
 from params_config import tree_depth
 
-N_SCENARIOS = 50
+N_SCENARIOS = 200
 SLIP_PROB_MIN = 0.0
 SLIP_PROB_MAX = 0.2
 PATTERN_SEED = 42  # fixed seed for full reproducibility
@@ -27,12 +27,12 @@ def main(depth):
     patterns, slip_probs = generate_slip_patterns(depth)
 
     os.makedirs('trees', exist_ok=True)
-    out_path = f'trees/slip_patterns_depth{depth}.npy'
+    out_path = f'trees/slip_patterns_depth{depth}_eval.npy'
     np.save(out_path, patterns)
 
     print(f"depth={depth}: {patterns.shape[0]} scenarios, "
           f"{patterns.shape[1]} internal nodes")
-    for i in [0, 12, 24, 37, 49]:
+    for i in [0, 49, 99, 149, 199]:
         print(f"  scenario {i:2d}: slip_prob={slip_probs[i]:.3f}, "
               f"nodes_slip={patterns[i].sum()}/{patterns.shape[1]}")
     print(f"  Saved → {out_path}")

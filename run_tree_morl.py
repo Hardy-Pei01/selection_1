@@ -25,9 +25,9 @@ run_scoring = {
 }
 
 run_scenario_method = {
-    'single': 1,
+    'single': 0,
     'multi': 0,
-    'moro': 0,
+    'moro': 1,
 }
 
 obj_uncertain = {
@@ -36,8 +36,8 @@ obj_uncertain = {
 }
 
 param_uncertain = {
-    'deterministic': 1,
-    'robust': 0
+    'deterministic': 0,
+    'robust': 1
 }
 
 
@@ -59,7 +59,6 @@ num_weight_divisions = {
     'multi_obj': 149,  # C(149+2-1, 149) = 150 weight vectors for 2 objectives
     'many_obj': 5,  # manageable grid for 6 objectives
 }
-neighbourhood_size = 10
 
 # ── Objective metadata ────────────────────────────────────────────────────────
 ref_points = {
@@ -126,7 +125,6 @@ if __name__ == '__main__':
                             many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
-                            neighbourhood_size=neighbourhood_size,
                         )
                         result = morl_moro(
                             params=params,
@@ -146,7 +144,6 @@ if __name__ == '__main__':
                             many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
-                            neighbourhood_size=neighbourhood_size,
                         )
                         result = morl_multi(
                             params=params,

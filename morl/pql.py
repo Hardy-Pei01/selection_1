@@ -24,11 +24,7 @@ def _nd_mask(arr: np.ndarray) -> np.ndarray:
 
 
 def get_non_dominated(candidates):
-    """Drop-in replacement for morl_baselines.get_non_dominated.
-
-    Accepts a set of tuples or any iterable of vectors; returns a set
-    of the non-dominated tuples under the same maximisation convention.
-    """
+    """Drop-in replacement for morl_baselines.get_non_dominated."""
     if not candidates:
         return set()
     arr = np.asarray(list(candidates), dtype=float)
@@ -39,18 +35,7 @@ def get_non_dominated(candidates):
 
 
 def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
-    """Generate evenly spaced weight vectors on the unit simplex.
-
-    Uses the same approach as MOEA/D: place points on a lattice in the
-    (num_objectives - 1)-simplex with `num_divisions` intervals per axis.
-
-    Args:
-        num_objectives: Number of objectives.
-        num_divisions: Number of divisions along each axis.
-
-    Returns:
-        Array of shape (n_weights, num_objectives) with rows summing to 1.
-    """
+    """Generate evenly spaced weight vectors on the unit simplex."""
     combs = product(range(num_divisions + 1), repeat=num_objectives)
     weights = np.array([c for c in combs if sum(c) == num_divisions])
     weights = weights / num_divisions
@@ -58,28 +43,6 @@ def generate_weights(num_objectives: int, num_divisions: int) -> np.ndarray:
     weights = np.maximum(weights, 1e-4)
     weights = weights / weights.sum(axis=1, keepdims=True)
     return weights
-
-
-def build_neighbourhoods(weights: np.ndarray, neighbourhood_size: int) -> list:
-    """Pre-compute the neighbourhood for each weight vector.
-
-    For each weight vector w_i, finds the `neighbourhood_size` closest
-    weight vectors by Euclidean distance (including w_i itself), exactly
-    as MOEA/D does.
-
-    Args:
-        weights: Array of shape (W, num_objectives).
-        neighbourhood_size: Number of neighbours per weight vector.
-
-    Returns:
-        List of length W, each element an array of neighbour indices.
-    """
-    neighbourhoods = []
-    for w in weights:
-        dists = np.linalg.norm(weights - w, axis=1)
-        neighbours = np.argsort(dists)[:neighbourhood_size]
-        neighbourhoods.append(neighbours)
-    return neighbourhoods
 
 
 class PQL(MOAgent):
@@ -94,9 +57,9 @@ class PQL(MOAgent):
             final_epsilon=0.1,
             seed=None,
             num_weight_divisions=5,
-            neighbourhood_size=5,
             nd_update_freq=1,
             robust=False,
+            n_scenarios=None,
             max_nd_size=None,
             max_archive_size=None,
             verbose=False,
@@ -113,11 +76,14 @@ class PQL(MOAgent):
         self.final_epsilon = final_epsilon
         self.ref_point = ref_point
         self.robust = robust
+        # Number of scenarios in the robust-MORO ensemble.
+        self.n_scenarios = n_scenarios
+        if self.robust and self.n_scenarios is None:
+            raise ValueError(
+                "PQL(robust=True, ...) requires n_scenarios=<count>"
+            )
         self.max_nd_size = max_nd_size
-        # Bound on the global Pareto archive. Decoupled from max_nd_size
-        # (which bounds per-(s, a) Q-sets for training cost) so the archive
-        # can stay large for diversity without paying training-time cost.
-        # When None, the archive is unbounded.
+        # Optional cap on the returned start-state Pareto front.
         self.max_archive_size = max_archive_size
         self.verbose = verbose
         self.tag = tag
@@ -160,8 +126,17 @@ class PQL(MOAgent):
             lambda: np.zeros((self.num_actions, self.num_objectives))
         )
         if self.robust:
-            self.reward_samples = defaultdict(
-                lambda: [[] for _ in range(self.num_actions)]
+            # Per-scenario running mean of immediate rewards at each (s, a),
+            # plus a per-scenario visit count. Aggregation across scenarios
+            # uses np.percentile(20, axis=0) over the visited subset.
+            n_s = self.n_scenarios
+            n_a = self.num_actions
+            n_o = self.num_objectives
+            self.scenario_reward_means = defaultdict(
+                lambda: np.zeros((n_s, n_a, n_o))
+            )
+            self.scenario_visit_counts = defaultdict(
+                lambda: np.zeros((n_s, n_a), dtype=np.int64)
             )
         self.nd_decomp = defaultdict(
             lambda: [{tuple(np.zeros(self.num_objectives))} for _ in range(self.num_actions)]
@@ -169,10 +144,9 @@ class PQL(MOAgent):
 
         # Decomposition structures.
         self.weights = generate_weights(self.num_objectives, num_weight_divisions)
-        self.neighbourhood_size = min(neighbourhood_size, len(self.weights))
-        self.neighbourhoods = build_neighbourhoods(self.weights, self.neighbourhood_size)
-        # Initialise to -inf so the first update always takes effect,
-        # regardless of whether rewards are negative (as in the fruit tree).
+        # Cursor into self.weights.
+        self._weight_cursor = 0
+        # Initialise to -inf so the first update always takes effect.
         self.ideal_point = np.full(self.num_objectives, -np.inf)
         self.nd_update_freq = nd_update_freq
         self.archive = set()
@@ -184,23 +158,6 @@ class PQL(MOAgent):
     def _update_ideal_point_global(self, decomp: bool = False):
         """Update the ideal point globally from Q-sets across all visited
         state-action pairs.
-
-        Reads Q-sets rather than avg_reward directly because Q-sets
-        (avg_reward + gamma * bootstrap) reflect the true value estimate
-        including discounted future rewards. For episodic environments with
-        terminal rewards only (e.g. fruit tree), Q-sets equal avg_reward, so
-        there is no difference. For non-terminal environments (e.g. lake),
-        avg_reward captures only per-step reward and would systematically
-        underestimate the ideal point, reducing the discriminative power of
-        the Chebyshev scorer.
-
-        Args:
-            decomp: If True, read Q-sets from nd_decomp (decomposition
-                    variant). If False, read from non_dominated
-                    (pareto/indicator variants).
-
-        Called once per episode end so the cost is amortised over the
-        episode length rather than paid at every step.
         """
         for s in self.counts:
             for a in range(self.num_actions):
@@ -210,21 +167,14 @@ class PQL(MOAgent):
                     self.ideal_point = np.maximum(self.ideal_point, np.array(vec))
 
     # ------------------------------------------------------------------
-    # Scoring functions — THE ONLY DIFFERENCE between the three variants
+    # Scoring functions
     # ------------------------------------------------------------------
 
     def score_pareto_cardinality(self, state: int):
-        """Pareto-based scoring: count non-dominated contributions per action.
-
-        Stacks Q-vectors from all visited actions into one (V, d) array,
-        prunes via _nd_mask (moocore-backed), then attributes each
-        surviving row back to its owning action.
-        """
+        """Pareto-based scoring: count non-dominated contributions per action."""
         q_arrays = []
         action_of_row = []
         for a in range(self.num_actions):
-            if self.counts[state][a] == 0:
-                continue
             qa = self.get_q_array(state, a)
             if qa.shape[0] == 0:
                 continue
@@ -232,57 +182,52 @@ class PQL(MOAgent):
             action_of_row.extend([a] * qa.shape[0])
         if not q_arrays:
             return np.ones(self.num_actions)
-        Q = np.vstack(q_arrays)  # (V, d)
-        action_of_row = np.array(action_of_row)  # (V,)
-        mask = _nd_mask(Q)  # (V,)
+        Q = np.vstack(q_arrays)
+        action_of_row = np.array(action_of_row)
+        mask = _nd_mask(Q)
         scores = np.zeros(self.num_actions)
-        # Each non-dominated row contributes +1 to its owning action.
         if mask.any():
             np.add.at(scores, action_of_row[mask], 1)
         return scores
 
     def score_hypervolume(self, state: int):
         """Indicator-based scoring: hypervolume contribution per action."""
-        visited = [a for a in range(self.num_actions)
-                   if self.counts[state][a] > 0]
-        if not visited:
-            return np.ones(self.num_actions)
         scores = np.zeros(self.num_actions)
-        for a in visited:
+        for a in range(self.num_actions):
             scores[a] = hypervolume(self.ref_point,
                                     list(self.get_q_set(state, a)))
         return scores
 
     def score_decomposition(self, state: int):
-        """Decomposition-based scoring using Chebyshev scalarisation.
-
-        Vectorized: stacks Q-vectors per action and computes scalarisations
-        in one broadcast per weight in the neighbourhood.
-        """
+        """Decomposition-based scoring"""
         q_arrays = []
         action_of_row = []
         for a in range(self.num_actions):
             if self.counts[state][a] == 0:
                 continue
-            qs = list(self.get_q_set(state, a, decomp=True))
-            if not qs:
+            qa = self.get_q_array(state, a, decomp=True)
+            if qa.shape[0] == 0:
                 continue
-            q_arrays.append(np.array(qs, dtype=float))
-            action_of_row.extend([a] * len(qs))
+            q_arrays.append(qa)
+            action_of_row.extend([a] * qa.shape[0])
         if not q_arrays:
             return np.ones(self.num_actions)
-        Q = np.vstack(q_arrays)  # (V_total, d)
-        action_of_row = np.array(action_of_row)  # (V_total,)
-        dev = self.ideal_point - Q  # (V_total, d)
+        Q = np.vstack(q_arrays)                         # (V, d)
+        action_of_row = np.array(action_of_row)         # (V,)
+        dev = self.ideal_point - Q                      # (V, d)
 
+        # Pick the next subproblem (weight) — round-robin cursor.
+        w_i = self._weight_cursor
+        self._weight_cursor = (self._weight_cursor + 1) % len(self.weights)
+        w = self.weights[w_i]                           # (d,)
+
+        # Chebyshev scalarisation: smaller = better for this subproblem.
+        scalarised = np.max(w * dev, axis=1)            # (V,)
+        best_row = int(np.argmin(scalarised))
+
+        # One-hot: only the action owning the winning row gets +1.
         scores = np.zeros(self.num_actions)
-        i = self.np_random.integers(len(self.weights))
-        nbrs = self.neighbourhoods[i]
-        W = self.weights[nbrs]  # (k, d)
-        scalarised = np.max(W[:, None, :] * dev[None, :, :], axis=2)  # (k, V_total)
-        winners = np.argmin(scalarised, axis=1)
-        for row in winners:
-            scores[action_of_row[row]] += 1
+        scores[action_of_row[best_row]] = 1.0
         return scores
 
     # ------------------------------------------------------------------
@@ -290,24 +235,12 @@ class PQL(MOAgent):
     # ------------------------------------------------------------------
 
     def get_q_set(self, state: int, action: int, decomp: bool = False):
-        """Compute the Q-set for a (state, action) pair.
-
-        Args:
-            state: Flattened state index.
-            action: Action index.
-            decomp: If True, bootstrap from nd_decomp (decomposition variant).
-                    If False, bootstrap from non_dominated (pareto/indicator).
-        """
         nd = self.nd_decomp[state][action] if decomp else self.non_dominated[state][action]
         nd_array = np.array(list(nd))
         q_array = self.avg_reward[state][action] + self.gamma * nd_array
         return {tuple(vec) for vec in q_array}
 
     def get_q_array(self, state: int, action: int, decomp: bool = False) -> np.ndarray:
-        """Like get_q_set but returns the underlying numpy array directly.
-        Avoids set↔tuple round-trips when the consumer is going to re-array it.
-        Returns shape (V, d), possibly empty (0, d).
-        """
         nd = self.nd_decomp[state][action] if decomp else self.non_dominated[state][action]
         if not nd:
             return np.empty((0, self.num_objectives))
@@ -315,7 +248,6 @@ class PQL(MOAgent):
         return self.avg_reward[state][action] + self.gamma * nd_array
 
     def select_action(self, state: int, score_func: Callable):
-        """ε-greedy action selection using the given scoring function."""
         if self.np_random.uniform(0, 1) < self.epsilon:
             return self.np_random.integers(self.num_actions)
         else:
@@ -325,13 +257,7 @@ class PQL(MOAgent):
             )
 
     def _subsample_nd(self, nd: set, target_size: int = None) -> set:
-        """Subsample a non-dominated set down to target_size via crowding
-        distance. If target_size is None, falls back to self.max_nd_size
-        (preserves the original per-(s,a) cap behaviour).
-
-        Preserves diversity by retaining the most spread-out vectors —
-        the same criterion used by NSGA-II for truncation within a rank.
-        """
+        """Subsample a non-dominated set down to target_size via crowding distance."""
         if target_size is None:
             target_size = self.max_nd_size
         if target_size is None or len(nd) <= target_size:
@@ -354,9 +280,7 @@ class PQL(MOAgent):
 
     def calc_non_dominated(self, state: int):
         candidates = set().union(*[
-            self.get_q_set(state, a)
-            for a in range(self.num_actions)
-            if self.counts[state][a] > 0
+            self.get_q_set(state, a) for a in range(self.num_actions)
         ])
         if not candidates:
             return {tuple(np.zeros(self.num_objectives))}
@@ -368,12 +292,6 @@ class PQL(MOAgent):
         return nd
 
     def calc_decomp_best(self, state: int) -> set:
-        """Return the global best-per-weight Q-vector set at a state.
-
-        Vectorized: stacks every Q-vector across visited actions into one
-        (V_total, d) array, then for each weight vector w computes the
-        Chebyshev scalarisation as a single broadcast.
-        """
         q_vecs = []
         for a in range(self.num_actions):
             if self.counts[state][a] == 0:
@@ -382,10 +300,10 @@ class PQL(MOAgent):
         if not q_vecs:
             return {tuple(np.zeros(self.num_objectives))}
 
-        Q = np.array(q_vecs, dtype=float)  # (V_total, d)
-        dev = self.ideal_point - Q  # (V_total, d)
+        Q = np.array(q_vecs, dtype=float)
+        dev = self.ideal_point - Q
         scalarised = np.max(self.weights[:, None, :] * dev[None, :, :], axis=2)
-        best_idx = np.argmin(scalarised, axis=1)  # (W,)
+        best_idx = np.argmin(scalarised, axis=1)
         global_set = {tuple(Q[i]) for i in best_idx}
         return global_set if global_set else {tuple(np.zeros(self.num_objectives))}
 
@@ -399,19 +317,6 @@ class PQL(MOAgent):
             action_eval: str = "indicator",
             log_every: int = 1000,
     ):
-        """Train the agent.
-
-        Args:
-            total_timesteps: Total environment steps to train for.
-            action_eval: Scoring function to use. One of:
-                - ``'pareto'``        Pareto cardinality scoring.
-                - ``'indicator'``     Hypervolume indicator scoring.
-                - ``'decomposition'`` Neighbourhood Chebyshev scoring.
-            log_every: Log convergence metrics every this many steps.
-
-        Returns:
-            Tuple of (pareto_coverage_set, convergence_log).
-        """
         if action_eval == "indicator":
             score_func = self.score_hypervolume
         elif action_eval == "pareto":
@@ -425,9 +330,13 @@ class PQL(MOAgent):
             )
 
         is_decomp = (action_eval == "decomposition")
-        # Persist on the agent so post-training consumers (extract_policy,
-        # extract_lake_policy) know which Q-set table to read from.
         self.action_eval = action_eval
+
+        # Determine the canonical start state (where Bellman bootstrap
+        # propagates Q-values back to). For envs whose reset doesn't yield
+        # state index 0, hardcoding state=0 would give an empty front.
+        _reset_obs, _ = self.env.reset()
+        self._start_state = int(np.ravel_multi_index(_reset_obs, self.env_shape))
 
         convergence_log = []
         next_log_step = log_every
@@ -448,21 +357,43 @@ class PQL(MOAgent):
                 self.global_step += 1
                 next_state = int(np.ravel_multi_index(next_state, self.env_shape))
 
-                # avg_reward update — identical for all three variants
                 self.counts[state][action] += 1
 
-                # Bellman update — paradigm-specific
                 if self.global_step % self.nd_update_freq == 0:
-                    if is_decomp:
+                    if terminated or truncated:
+                        zero = {tuple(np.zeros(self.num_objectives))}
+                        if is_decomp:
+                            self.nd_decomp[state][action] = zero
+                        else:
+                            self.non_dominated[state][action] = zero
+                    elif is_decomp:
                         self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
                     else:
                         self.non_dominated[state][action] = self.calc_non_dominated(next_state)
 
                 if self.robust:
-                    self.reward_samples[state][action].append(reward.copy())
-                    if self.global_step % self.nd_update_freq == 0:  # batch the recomputation
-                        samples = np.array(self.reward_samples[state][action])
-                        self.avg_reward[state][action] = np.percentile(samples, 20, axis=0)
+                    # Per-scenario running mean: update only the active
+                    # scenario's slot at this (s, a). Cheap O(d) update.
+                    sc_idx = int(self.env.unwrapped._current_idx)
+                    self.scenario_visit_counts[state][sc_idx, action] += 1
+                    n = self.scenario_visit_counts[state][sc_idx, action]
+                    self.scenario_reward_means[state][sc_idx, action] += (
+                        (reward - self.scenario_reward_means[state][sc_idx, action]) / n
+                    )
+                    if self.global_step % self.nd_update_freq == 0:
+                        # Aggregate across scenarios visited so far at this
+                        # cell. Take 20th percentile across the visited-
+                        # scenario subset; if only 1 scenario has been seen,
+                        # use that scenario's mean directly.
+                        visited_mask = self.scenario_visit_counts[state][:, action] > 0
+                        if visited_mask.any():
+                            visited_means = self.scenario_reward_means[state][visited_mask, action]
+                            if visited_means.shape[0] > 1:
+                                self.avg_reward[state][action] = np.percentile(
+                                    visited_means, 20, axis=0
+                                )
+                            else:
+                                self.avg_reward[state][action] = visited_means[0]
                 else:
                     self.avg_reward[state][action] += (
                             (reward - self.avg_reward[state][action]) / self.counts[state][action]
@@ -470,59 +401,26 @@ class PQL(MOAgent):
 
                 state = next_state
 
-                # Convergence logging
                 if self.global_step >= next_log_step:
-                    # Sweep Q-vectors across all visited (s, a) pairs, not
-                    # just state 0 — same logic as the final archive update.
-                    # The log_every cadence controls how often we pay this
-                    # cost; default log_every = timesteps // 100 is fine.
-                    all_q_vecs = set()
-                    for s in self.counts:
-                        for a in range(self.num_actions):
-                            if self.counts[s][a] == 0:
-                                continue
-                            all_q_vecs |= self.get_q_set(s, a, decomp=is_decomp)
+                    pcs = self.get_local_pcs(state=self._start_state, decomp=is_decomp)
 
-                    # Exclude the zero-initialisation phantom vector — it dominates all
-                    # real (negative) reward vectors under maximisation convention and
-                    # would permanently corrupt the archive once added.
-                    real_pcs = {v for v in all_q_vecs if any(x != 0.0 for x in v)}
-
-                    self.archive |= real_pcs
-                    if len(self.archive) > 1:
-                        self.archive = get_non_dominated(self.archive)
-                    # Bound the archive size: in higher-dim objective spaces
-                    # the Pareto front stays large after pruning and would
-                    # otherwise grow unboundedly across log steps, choking
-                    # the post-training policy-extraction + scenario-replay
-                    # loop. Decoupled from max_nd_size so the per-(s,a) Q-set
-                    # cap stays small (training cost) while the archive can
-                    # stay large (diversity).
-                    if (self.max_archive_size is not None
-                            and len(self.archive) > self.max_archive_size):
-                        self.archive = self._subsample_nd(
-                            self.archive, target_size=self.max_archive_size
-                        )
-
-                    hv = hypervolume(self.ref_point, list(self.archive)) if self.archive else 0.0
+                    # hv = hypervolume(self.ref_point, list(pcs)) if pcs else 0.0
                     convergence_log.append({
                         "timestep": self.global_step,
-                        "hypervolume": hv,
-                        "pcs_size": len(self.archive),
+                        # "hypervolume": hv,
+                        "pcs_size": len(pcs),
                         "epsilon": self.epsilon,
                     })
                     if self.verbose:
                         prefix = f'[{self.tag}] ' if self.tag else '  '
                         print(
                             f'{prefix}step {self.global_step}/{total_timesteps} '
-                            f'HV={hv:.4f} |archive|={len(self.archive)} '
+                            f'|archive|={len(pcs)} '
                             f'eps={self.epsilon:.3f}',
                             flush=True,
                         )
                     next_log_step += log_every
 
-            # Update the ideal point globally from all visited (s, a) pairs.
-            # Done once per episode rather than per step to amortise cost.
             self._update_ideal_point_global(decomp=is_decomp)
 
             self.epsilon = linearly_decaying_value(
@@ -533,23 +431,7 @@ class PQL(MOAgent):
                 self.final_epsilon,
             )
 
-        # Final archive update — gather Q-vectors across all visited (s, a)
-        # pairs. Don't pre-prune per state: a vector locally dominated at one
-        # state may still be globally non-dominated against the union from
-        # other states.
-        all_q_vecs = set()
-        for s in self.counts:
-            for a in range(self.num_actions):
-                if self.counts[s][a] == 0:
-                    continue
-                all_q_vecs |= self.get_q_set(s, a, decomp=is_decomp)
-        real_pcs = {v for v in all_q_vecs if any(x != 0.0 for x in v)}
-        self.archive |= real_pcs
-        if len(self.archive) > 1:
-            self.archive = get_non_dominated(self.archive)
-        # Same archive cap as the periodic block — keep the post-training
-        # archive bounded so policy extraction + scenario replay stays
-        # tractable. Decoupled from max_nd_size.
+        self.archive = self.get_local_pcs(state=self._start_state, decomp=is_decomp)
         if (self.max_archive_size is not None
                 and len(self.archive) > self.max_archive_size):
             self.archive = self._subsample_nd(
@@ -562,22 +444,11 @@ class PQL(MOAgent):
     # ------------------------------------------------------------------
 
     def get_local_pcs(self, state: int = 0, decomp: bool = False):
-        """Return the Pareto coverage set at the given state.
-
-        Always applies final Pareto pruning regardless of variant, so the
-        returned set is directly comparable across all three paradigms.
-
-        Args:
-            state: Flattened state index.
-            decomp: If True, build candidates from nd_decomp Q-sets.
-        """
+        """Return the Pareto coverage set at the given state."""
         q_sets = [
             self.get_q_set(state, a, decomp=decomp)
             for a in range(self.num_actions)
-            if self.counts[state][a] > 0  # exclude unvisited actions
         ]
-        if not q_sets:
-            return set()
         candidates = set().union(*q_sets)
         if not candidates:
             return set()
@@ -586,9 +457,6 @@ class PQL(MOAgent):
         return get_non_dominated(candidates)
 
     def get_config(self):
-        # Both TwoLakeEnv and FruitTreeEnv don't register a gym spec, so
-        # `self.env.unwrapped.spec` is None on those. Fall back to the class
-        # name for the env_id field.
         env_unwrapped = self.env.unwrapped
         spec = getattr(env_unwrapped, "spec", None)
         env_id = spec.id if spec is not None else type(env_unwrapped).__name__
@@ -603,10 +471,10 @@ class PQL(MOAgent):
             "num_objectives": self.num_objectives,
             "ref_point": self.ref_point.tolist(),
             "num_weights": len(self.weights),
-            "neighbourhood_size": self.neighbourhood_size,
             "nd_update_freq": self.nd_update_freq,
             "robust": self.robust,
             "max_nd_size": self.max_nd_size,
+            "max_archive_size": self.max_archive_size,
         }
 
     # ------------------------------------------------------------------
@@ -614,11 +482,7 @@ class PQL(MOAgent):
     # ------------------------------------------------------------------
 
     def save_q_table(self, path: str):
-        """
-        Pickle the four Q-learning structures plus archive and metadata.
-        """
-        # Convert defaultdicts to plain dicts so pickle doesn't need the
-        # original lambda factories at load time.
+        """Pickle the four Q-learning structures plus archive and metadata."""
         payload = {
             "version": 1,
             "config": self.get_config(),
@@ -626,6 +490,7 @@ class PQL(MOAgent):
             "global_step": self.global_step,
             "ideal_point": self.ideal_point.copy(),
             "archive": set(self.archive),
+            "weight_cursor": int(self._weight_cursor),
             "counts": {s: arr.copy() for s, arr in self.counts.items()},
             "non_dominated": {
                 s: [set(per_a) for per_a in cells]
@@ -637,18 +502,21 @@ class PQL(MOAgent):
             },
             "avg_reward": {s: arr.copy() for s, arr in self.avg_reward.items()},
         }
-        if self.robust and hasattr(self, "reward_samples"):
-            payload["reward_samples"] = {
-                s: [list(per_a) for per_a in cells]
-                for s, cells in self.reward_samples.items()
+        if self.robust and hasattr(self, "scenario_reward_means"):
+            payload["scenario_reward_means"] = {
+                s: arr.copy()
+                for s, arr in self.scenario_reward_means.items()
             }
+            payload["scenario_visit_counts"] = {
+                s: arr.copy()
+                for s, arr in self.scenario_visit_counts.items()
+            }
+            payload["n_scenarios"] = self.n_scenarios
         with open(path, "wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def load_q_table(self, path: str):
-        """
-        Restore Q-table structures from a save_q_table file.
-        """
+        """Restore Q-table structures from a save_q_table file."""
         with open(path, "rb") as f:
             payload = pickle.load(f)
         if payload.get("version") != 1:
@@ -666,7 +534,6 @@ class PQL(MOAgent):
                 f"current={self.num_actions}"
             )
 
-        # Re-wrap as defaultdicts with the same factories the constructor uses.
         d = self.num_objectives
         a = self.num_actions
         counts_factory = lambda: np.zeros(a)
@@ -678,11 +545,22 @@ class PQL(MOAgent):
         self.nd_decomp = defaultdict(nd_factory, payload["nd_decomp"])
         self.avg_reward = defaultdict(avg_factory, payload["avg_reward"])
 
-        if "reward_samples" in payload:
-            samples_factory = lambda: [[] for _ in range(a)]
-            self.reward_samples = defaultdict(samples_factory, payload["reward_samples"])
+        if "scenario_reward_means" in payload:
+            n_s = payload.get("n_scenarios", self.n_scenarios)
+            n_a = a
+            n_o = d
+            srm_factory = lambda: np.zeros((n_s, n_a, n_o))
+            svc_factory = lambda: np.zeros((n_s, n_a), dtype=np.int64)
+            self.scenario_reward_means = defaultdict(
+                srm_factory, payload["scenario_reward_means"]
+            )
+            self.scenario_visit_counts = defaultdict(
+                svc_factory, payload["scenario_visit_counts"]
+            )
 
         self.archive = set(payload["archive"])
         self.ideal_point = np.asarray(payload["ideal_point"]).copy()
         self.global_step = payload["global_step"]
         self.action_eval = payload.get("action_eval")
+        # Older pickles may not have weight_cursor; default to 0.
+        self._weight_cursor = int(payload.get("weight_cursor", 0))

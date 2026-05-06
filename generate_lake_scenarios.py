@@ -45,14 +45,14 @@ def generate_lake_scenarios(n_scenarios=lake_n_scenarios, seed=SCENARIO_SEED):
 
 
 def main():
-    scenarios = generate_lake_scenarios()
+    scenarios = generate_lake_scenarios(1000)
 
     os.makedirs('lakes', exist_ok=True)
-    out_path = 'lakes/lake_scenarios.npy'
+    out_path = 'lakes/lake_scenarios_eval.npy'
     np.save(out_path, scenarios)
 
     print(f"Generated {len(scenarios)} lake scenarios -> {out_path}")
-    for i in [0, 12, 24, 37, 49]:
+    for i in [0, 199, 399, 599, 799, 999]:
         s = scenarios[i]
         print(f"  scenario {i:2d}: b1={s['b1']:.3f}, q1={s['q1']:.3f}, "
               f"b2={s['b2']:.3f}, q2={s['q2']:.3f}, "

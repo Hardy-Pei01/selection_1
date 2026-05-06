@@ -7,19 +7,19 @@ from matplotlib.patches import Patch
 from moocore import hypervolume as _mc_hv
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-data_dir = "./tree_data/moea_observable"
-out_dir  = "./tree_figures"
-N_OBJS   = [2, 6]
+data_dir = "./lake_data/morl_deterministic"
+out_dir = "./lake_figures"
+N_OBJS = [2, 6]
 
 # Three regimes to compare. Order = bar order within each algorithm group.
 # Tuple: (setting_in_folder, regime_in_folder, display_label, bar_color)
 CONDITIONS = [
-    ("intertemporal", "observable",     "Static, Observable",       "#378ADD"),
-    ("table",         "observable",     "Adaptive, Observable",     "#1D9E75"),
-    ("table",         "non_observable", "Adaptive, Non-observable", "#D85A30"),
+    ("intertemporal", "observable", "Static, Observable", "#378ADD"),
+    ("table", "observable", "Adaptive, Observable", "#1D9E75"),
+    ("table", "non_observable", "Adaptive, Non-observable", "#D85A30"),
 ]
 
-ALGOS       = ["IBEA", "NSGAII", "MOEAD"]
+ALGOS = ["IBEA", "NSGAII", "MOEAD"]
 ALGO_LABELS = {"IBEA": "IBEA", "NSGAII": "NSGA-II", "MOEAD": "MOEA/D"}
 
 # Cap on archive size before HV. moocore HV is doubly-exponential in dim;
@@ -45,7 +45,7 @@ def crowding_subsample(arr: np.ndarray, target_size: int) -> np.ndarray:
             continue
         for i in range(1, n - 1):
             crowd[order[i]] += (
-                (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / rng
+                    (arr[order[i + 1], obj] - arr[order[i - 1], obj]) / rng
             )
     keep = np.argsort(crowd)[-target_size:]
     return arr[keep]
@@ -125,8 +125,8 @@ for folder_name in sorted(os.listdir(data_dir)):
     hv_val = hv_max(objectives, ref_point)
 
     records[(setting, algo, n_obj, regime)] = {
-        "num_solutions": n_solutions,   # original archive size (pre-cap)
-        "hypervolume":   hv_val,
+        "num_solutions": n_solutions,  # original archive size (pre-cap)
+        "hypervolume": hv_val,
     }
 
 if not records:
@@ -141,8 +141,8 @@ if not records:
 def plot_for_n_obj(n_obj: int):
     fig, (ax_hv, ax_n) = plt.subplots(1, 2, figsize=(11, 5))
 
-    n_cond  = len(CONDITIONS)
-    bar_w   = 0.8 / n_cond
+    n_cond = len(CONDITIONS)
+    bar_w = 0.8 / n_cond
     centers = np.arange(len(ALGOS))
 
     for ci, (setting, regime, _label, color) in enumerate(CONDITIONS):
@@ -150,7 +150,7 @@ def plot_for_n_obj(n_obj: int):
         hvs, nums = [], []
         for algo in ALGOS:
             rec = records.get((setting, algo, n_obj, regime))
-            hvs.append(rec["hypervolume"]   if rec else np.nan)
+            hvs.append(rec["hypervolume"] if rec else np.nan)
             nums.append(rec["num_solutions"] if rec else np.nan)
 
         for ax, vals, fmt in [(ax_hv, hvs, ".2f"), (ax_n, nums, "d")]:
@@ -164,9 +164,9 @@ def plot_for_n_obj(n_obj: int):
 
     for ax, ylabel, title in [
         (ax_hv, "Hypervolume",
-                f"Hypervolume — {n_obj}-objective"),
-        (ax_n,  "Number of Non-dominated Solutions",
-                f"Archive size — {n_obj}-objective"),
+         f"Hypervolume — {n_obj}-objective"),
+        (ax_n, "Number of Non-dominated Solutions",
+         f"Archive size — {n_obj}-objective"),
     ]:
         ax.set_xticks(centers)
         ax.set_xticklabels([ALGO_LABELS[a] for a in ALGOS], fontsize=10)

@@ -12,7 +12,7 @@ from policy_eval import extract_policy, extract_lake_policy, \
 from params_config import slip_patterns_path, nd_size_cap_tree, \
     lake_scenarios_path, nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake, \
     archive_cap_tree, archive_cap_lake, total_years, years_per_action, \
-    gamma_tree, gamma_lake
+    gamma_tree, gamma_lake, tree_n_scenarios, lake_n_scenarios
 
 
 class MoroFruitTreeEnv(FruitTreeEnv):
@@ -20,6 +20,8 @@ class MoroFruitTreeEnv(FruitTreeEnv):
                  patterns_path, seed=42):
         self._patterns = np.load(patterns_path)  # load once
         self._scenario_rng = np.random.default_rng(seed)
+        # Tracked so the PQL agent can read the active scenario per step.
+        self._current_idx = 0
         super().__init__(depth=depth, reward_dim=reward_dim,
                          csv_path=csv_path, observe=observe,
                          scenario_index=0,
@@ -27,6 +29,7 @@ class MoroFruitTreeEnv(FruitTreeEnv):
 
     def reset(self, *, seed=None, options=None):
         idx = int(self._scenario_rng.integers(len(self._patterns)))
+        self._current_idx = idx
         self._slip_pattern = self._patterns[idx]
         return super().reset(seed=seed, options=options)
 
@@ -91,7 +94,6 @@ def run_moro(
         n_obj,
         csv_path,
         num_weight_divisions,
-        neighbourhood_size,
         output_folder,
         file_end,
         start_time=None,
@@ -113,9 +115,9 @@ def run_moro(
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05,
         num_weight_divisions=num_weight_divisions,
-        neighbourhood_size=neighbourhood_size,
         nd_update_freq=nd_update_freq_tree,
         robust=True,
+        n_scenarios=tree_n_scenarios,
         max_nd_size=nd_size_cap_tree,
         max_archive_size=archive_cap_tree,
         verbose=True,
@@ -130,9 +132,6 @@ def run_moro(
 
     # ── Build convergence dataframe ───────────────────────────────────────
     conv_df = pd.DataFrame(conv_log)
-
-    # Attach elapsed wall-clock time — mirrors moea/moea_moro.py inside the
-    # evaluator block where conv['time'] is set.
     if start_time is not None:
         elapsed = int(time.time() - start_time)
         conv_df['time'] = time.strftime('%H:%M:%S', time.gmtime(elapsed))
@@ -174,7 +173,7 @@ def run_moro(
 
 def run_moro_lake(
         scoring, timesteps, ref_point, n_obj,
-        num_weight_divisions, neighbourhood_size,
+        num_weight_divisions,
         output_folder, file_end, start_time=None,
 ):
     os.makedirs(output_folder, exist_ok=True)
@@ -184,9 +183,9 @@ def run_moro_lake(
     agent = PQL(
         env=env, ref_point=ref_point, gamma=gamma_lake,
         initial_epsilon=1.0, epsilon_decay_steps=timesteps,
-        final_epsilon=0.05, num_weight_divisions=num_weight_divisions,
-        neighbourhood_size=neighbourhood_size,
+        final_epsilon=0.1, num_weight_divisions=num_weight_divisions,
         nd_update_freq=nd_update_freq_lake, robust=True,
+        n_scenarios=lake_n_scenarios,
         max_nd_size=nd_size_cap_lake,
         max_archive_size=archive_cap_lake,
         verbose=True,

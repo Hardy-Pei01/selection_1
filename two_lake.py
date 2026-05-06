@@ -32,6 +32,9 @@ class TwoLakeEnv(gym.Env):
             Pcrit1=None,
             Pcrit2=None,
             num_obj=2,
+            # Number of gym_step bins added to the observation to mitigate
+            # state aliasing under tabular Q-learning.
+            n_step_bins=5,
     ):
         super().__init__()
 
@@ -57,6 +60,14 @@ class TwoLakeEnv(gym.Env):
         self.inflow_seed1 = inflow_seed1
         self.inflow_seed2 = inflow_seed2
         self.num_obj = num_obj
+        # --- Step-bin configuration ---
+        if self.n_gym_steps % n_step_bins != 0:
+            raise ValueError(
+                f"n_step_bins ({n_step_bins}) must divide n_gym_steps "
+                f"({self.n_gym_steps}) evenly."
+            )
+        self.n_step_bins = n_step_bins
+        self._step_bin_size = self.n_gym_steps // n_step_bins
 
         # --- Critical thresholds (solved once at construction) ---
         self.Pcrit1 = Pcrit1 if Pcrit1 is not None else \
@@ -78,11 +89,11 @@ class TwoLakeEnv(gym.Env):
         # 6 discrete levels mapped to REDUCED_EMISSIONS = [0.00, 0.02, ..., 0.10].
         self.action_space = gym.spaces.MultiDiscrete([6, 6])
 
-        # Observations: [P_lake1, P_lake2]
+        # Observations: [P_lake1_bin, P_lake2_bin, gym_step_bin]
         n_bins = len(LAKE_BINS) - 1
         self.observation_space = gym.spaces.Box(
-            low=np.array([0, 0], dtype=np.int32),
-            high=np.array([n_bins - 1, n_bins - 1], dtype=np.int32),
+            low=np.array([0, 0, 0], dtype=np.int32),
+            high=np.array([n_bins - 1, n_bins - 1, n_step_bins - 1], dtype=np.int32),
             dtype=np.int32,
         )
 
@@ -109,7 +120,7 @@ class TwoLakeEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.X1 = 0.0
-        self.X2 = 0.1
+        self.X2 = 0.05
         self.gym_step = 0
         self.prev_u1 = np.nan
         self.prev_u2 = np.nan
@@ -170,11 +181,13 @@ class TwoLakeEnv(gym.Env):
     # ------------------------------------------------------------------
 
     def _obs(self) -> np.ndarray:
-        """Discretized observation — bins (X1, X2) into LAKE_BINS for tabular MORL."""
         n_bins = len(LAKE_BINS) - 1
         x1_bin = int(np.clip(np.digitize(self.X1, LAKE_BINS) - 1, 0, n_bins - 1))
         x2_bin = int(np.clip(np.digitize(self.X2, LAKE_BINS) - 1, 0, n_bins - 1))
-        return np.array([x1_bin, x2_bin], dtype=np.int32)
+        # Clip to last bin: at terminal, gym_step == n_gym_steps would overflow.
+        step_bin = int(np.clip(self.gym_step // self._step_bin_size,
+                               0, self.n_step_bins - 1))
+        return np.array([x1_bin, x2_bin, step_bin], dtype=np.int32)
 
     def _simulate(self, u1: float, u2: float):
         """

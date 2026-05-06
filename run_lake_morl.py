@@ -12,20 +12,20 @@ from morl.morl_method_config import (
 )
 
 # ── Top-level output folder ───────────────────────────────────────────────────
-root_folder = './morl_lake'
+root_folder = './lake_morl'
 
 # ── Experiment toggles ────────────────────────────────────────────────────────
 
 run_scoring = {
-    'pareto': 1,
+    'pareto': 0,
     'indicator': 1,
-    'decomposition': 1,
+    'decomposition': 0,
 }
 
 run_scenario_method = {
-    'single': 1,
-    'multi': 0,
-    'moro': 0,
+    'single': 0,
+    'multi': 1,
+    'moro': 0
 }
 
 obj_uncertain = {
@@ -35,7 +35,7 @@ obj_uncertain = {
 
 param_uncertain = {
     'deterministic': 1,
-    'robust': 0,
+    'robust': 1,
 }
 
 
@@ -46,12 +46,12 @@ def _nested():
 
 
 timestep_settings = _nested()
-timestep_settings['single']['multi_obj']['deterministic'] = 10000
-timestep_settings['single']['many_obj']['deterministic'] = 10000
-timestep_settings['multi']['multi_obj']['robust'] = 10000
-timestep_settings['multi']['many_obj']['robust'] = 10000
-timestep_settings['moro']['multi_obj']['robust'] = 10000
-timestep_settings['moro']['many_obj']['robust'] = 10000
+timestep_settings['single']['multi_obj']['deterministic'] = 50000
+timestep_settings['single']['many_obj']['deterministic'] = 100000
+timestep_settings['multi']['multi_obj']['robust'] = 50000
+timestep_settings['multi']['many_obj']['robust'] = 100000
+timestep_settings['moro']['multi_obj']['robust'] = 50000
+timestep_settings['moro']['many_obj']['robust'] = 100000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 
@@ -59,7 +59,6 @@ num_weight_divisions = {
     'multi_obj': 149,  # 150 weight vectors for 2 objectives
     'many_obj': 5,  # manageable grid for 6 objectives
 }
-neighbourhood_size = 10
 
 # ── Objective metadata ────────────────────────────────────────────────────────
 # Reference points must be strictly below all achievable reward values.
@@ -123,7 +122,6 @@ if __name__ == '__main__':
                             many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
-                            neighbourhood_size=neighbourhood_size,
                         )
                         result = morl_moro_lake(
                             params=params,
@@ -141,7 +139,6 @@ if __name__ == '__main__':
                             many_obj=(key_4 == 'many_obj'),
                             robust=robust,
                             num_weight_divisions=nwd,
-                            neighbourhood_size=neighbourhood_size,
                         )
                         result = morl_multi_lake(
                             params=params,

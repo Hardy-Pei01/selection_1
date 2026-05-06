@@ -26,14 +26,16 @@ def extract_policy(agent, target_vec):
         for a in range(agent.num_actions):
             if agent.counts[state][a] == 0:
                 continue
-            q_set = agent.get_q_set(state, a, decomp=decomp)
-            for q_vec in q_set:
-                dist = np.sum(np.abs(np.array(q_vec) - target))
+            im_rew = agent.avg_reward[state][a]
+            nd_set = (agent.nd_decomp[state][a] if decomp
+                      else agent.non_dominated[state][a])
+            for q in nd_set:
+                q_arr = np.array(q)
+                dist = np.sum(np.abs(agent.gamma * q_arr + im_rew - target))
                 if dist < best_dist:
                     best_dist = dist
                     best_action = a
-                    next_target = np.array(q_vec) / agent.gamma \
-                        if agent.gamma > 0 else np.array(q_vec)
+                    next_target = q_arr
 
         if best_action is None:
             best_action = 0  # fallback
@@ -53,7 +55,7 @@ def extract_lake_policy(agent, target_vec, env):
     decisions = []
     terminated = False
 
-    # See note in extract_policy.
+    # See note in extract_policy regarding decomp routing.
     decomp = getattr(agent, 'action_eval', None) == 'decomposition'
 
     while not terminated:
@@ -64,13 +66,16 @@ def extract_lake_policy(agent, target_vec, env):
         for a in range(agent.num_actions):
             if agent.counts[state_flat][a] == 0:
                 continue
-            for q_vec in agent.get_q_set(state_flat, a, decomp=decomp):
-                dist = np.sum(np.abs(np.array(q_vec) - target))
+            im_rew = agent.avg_reward[state_flat][a]
+            nd_set = (agent.nd_decomp[state_flat][a] if decomp
+                      else agent.non_dominated[state_flat][a])
+            for q in nd_set:
+                q_arr = np.array(q)
+                dist = np.sum(np.abs(agent.gamma * q_arr + im_rew - target))
                 if dist < best_dist:
                     best_dist = dist
                     best_action = a
-                    next_target = np.array(q_vec) / agent.gamma \
-                        if agent.gamma > 0 else np.array(q_vec)
+                    next_target = q_arr
 
         if best_action is None:
             best_action = 0

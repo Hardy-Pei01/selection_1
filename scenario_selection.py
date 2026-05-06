@@ -433,7 +433,7 @@ if __name__ == "__main__":
     p.add_argument("--prim-box", type=str, default=None,
                    help="JSON file with PRIM box {uncertainty: [lo, hi], ...}. "
                         "Required if --filter prim.")
-    p.add_argument("--n-scenarios", type=int, default=500,
+    p.add_argument("--n-scenarios", type=int, default=5000,
                    help="LHS scenarios over deep uncertainties (paper: 500).")
     p.add_argument("--n-policies", type=int, default=10,
                    help="Random intertemporal policies (paper: 10).")
