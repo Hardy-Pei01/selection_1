@@ -10,10 +10,6 @@ def extract_policy(agent, target_vec):
     decisions = []
     target = np.array(target_vec)
 
-    # If the agent was trained with decomposition scoring, the populated
-    # bootstrap structure is `nd_decomp`, not `non_dominated`. Without this,
-    # extract_policy reads zero-init phantom Q-sets and silently picks
-    # action 0 at every level.
     decomp = getattr(agent, 'action_eval', None) == 'decomposition'
 
     level, pos = 0, 0

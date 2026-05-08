@@ -7,8 +7,8 @@ from matplotlib.patches import Patch
 from moocore import hypervolume as _mc_hv
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-data_dir = "./lake_data/morl_deterministic"
-out_dir = "./lake_figures"
+data_dir = "../lake_data/morl_deterministic"
+out_dir = "../lake_figures"
 N_OBJS = [2, 6]
 
 # Three regimes to compare. Order = bar order within each algorithm group.

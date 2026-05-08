@@ -42,17 +42,17 @@ def nested_dict():
 
 nfe_settings = nested_dict()
 nfe_settings['intertemporal']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 300000
+nfe_settings['intertemporal']['single']['many_obj']['deterministic'] = 200000
 nfe_settings['dps']['single']['multi_obj']['deterministic'] = 100000
-nfe_settings['dps']['single']['many_obj']['deterministic'] = 300000
+nfe_settings['dps']['single']['many_obj']['deterministic'] = 200000
 nfe_settings['intertemporal']['multi']['multi_obj']['robust'] = 100000
-nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 300000
+nfe_settings['intertemporal']['multi']['many_obj']['robust'] = 200000
 nfe_settings['dps']['multi']['multi_obj']['robust'] = 100000
-nfe_settings['dps']['multi']['many_obj']['robust'] = 300000
+nfe_settings['dps']['multi']['many_obj']['robust'] = 200000
 nfe_settings['intertemporal']['moro']['multi_obj']['robust'] = 100000
-nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 300000
+nfe_settings['intertemporal']['moro']['many_obj']['robust'] = 200000
 nfe_settings['dps']['moro']['multi_obj']['robust'] = 100000
-nfe_settings['dps']['moro']['many_obj']['robust'] = 300000
+nfe_settings['dps']['moro']['many_obj']['robust'] = 200000
 
 model_settings = nested_dict()
 model_settings['intertemporal']['multi_obj']['deterministic'] = (inter_lake_model, 'interMulti')

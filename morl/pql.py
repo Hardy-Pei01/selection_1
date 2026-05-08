@@ -1,4 +1,5 @@
 """Pareto Q-Learning."""
+import gzip
 import pickle
 import numbers
 from itertools import product
@@ -512,13 +513,19 @@ class PQL(MOAgent):
                 for s, arr in self.scenario_visit_counts.items()
             }
             payload["n_scenarios"] = self.n_scenarios
-        with open(path, "wb") as f:
+        with gzip.open(path, "wb", compresslevel=6) as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def load_q_table(self, path: str):
         """Restore Q-table structures from a save_q_table file."""
         with open(path, "rb") as f:
-            payload = pickle.load(f)
+            magic = f.read(2)
+        if magic == b'\x1f\x8b':
+            with gzip.open(path, "rb") as f:
+                payload = pickle.load(f)
+        else:
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
         if payload.get("version") != 1:
             raise ValueError(f"Unsupported q-table format version: {payload.get('version')}")
 
@@ -533,6 +540,15 @@ class PQL(MOAgent):
                 f"num_actions mismatch: saved={cfg['num_actions']}, "
                 f"current={self.num_actions}"
             )
+
+        self.gamma = float(cfg["gamma"])
+        self.initial_epsilon = float(cfg["initial_epsilon"])
+        self.epsilon_decay_steps = int(cfg["epsilon_decay_steps"])
+        self.final_epsilon = float(cfg["final_epsilon"])
+        self.ref_point = np.asarray(cfg["ref_point"])
+        self.nd_update_freq = int(cfg["nd_update_freq"])
+        self.max_nd_size = cfg["max_nd_size"]
+        self.max_archive_size = cfg["max_archive_size"]
 
         d = self.num_objectives
         a = self.num_actions

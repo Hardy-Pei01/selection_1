@@ -12,7 +12,7 @@ from fruit_tree import FruitTreeEnv
 
 
 class base_params(object):
-    def __init__(self, name, nfe, algo, root_folder, robust):
+    def __init__(self, name, nfe, algo, root_folder, robust, seed=None):
         self.name = name
         self.nfe = nfe
         self.algo_name = algo
@@ -24,11 +24,12 @@ class base_params(object):
             self.algorithm = MOEAD
         self.output_folder = f'{root_folder}/{name}'
         self.robust = robust
+        self.seed = seed
 
 
 class base_tree_params(base_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, robust, seed)
         if many_obj:
             self.epsilons = [0.001] * tree_many_obj
         else:
@@ -36,20 +37,20 @@ class base_tree_params(base_params):
 
 
 class multi_tree_params(base_tree_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
 
         self.references = tree_reference_scenarios
 
 
 class moro_tree_params(base_tree_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
 
 
 class base_lake_params(base_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, robust, seed)
         if many_obj:
             self.epsilons = [0.5, 0.5, 0.1, 0.1, 0.1, 0.1]
         else:
@@ -57,14 +58,14 @@ class base_lake_params(base_params):
 
 
 class multi_lake_params(base_lake_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
         self.references = lake_reference_scenarios
 
 
 class moro_lake_params(base_lake_params):
-    def __init__(self, name, nfe, algo, root_folder, many_obj, robust):
-        super().__init__(name, nfe, algo, root_folder, many_obj, robust)
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
 
 
 def output_file_end(model, params):

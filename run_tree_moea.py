@@ -1,5 +1,6 @@
 from ema_workbench import ema_logging
-from params_config import multi_objs_tree_params, many_objs_tree_params, tree_depth, tree_multi_obj, tree_many_obj
+from params_config import (multi_objs_tree_params, many_objs_tree_params,
+                           tree_depth, tree_multi_obj, tree_many_obj, seeds)
 from moea.moea_method_config import multi_tree_params, moro_tree_params, moea_moro, moea_multi
 from moea.model_builder import (inter_tree_model, inter_robust_tree_model, table_tree_model,
                                 table_robust_tree_model, table_many_objs_partially_observable_tree_model,
@@ -8,7 +9,7 @@ from collections import defaultdict
 import time
 
 activate_logging = 1
-root_folder = f'./tree_moea_{tree_depth}'
+root_folder = f'./tree_ea_{tree_depth}'
 
 run_policy = {
     'intertemporal': 1,
@@ -16,22 +17,22 @@ run_policy = {
 }
 run_evo_method = {
     'NSGAII': 1,
-    'IBEA': 0,
-    'MOEAD': 0
+    'IBEA': 1,
+    'MOEAD': 1
 }
 run_scenario_method = {
     'single': 0,
-    'multi': 1,
-    'moro': 0
+    'multi': 0,
+    'moro': 1
 }
 
 obj_uncertain = {
     'multi_obj': 1,
-    'many_obj': 0
+    'many_obj': 1
 }
 
 param_uncertain = {
-    'deterministic': 0,
+    'deterministic': 1,
     'robust': 1
 }
 
@@ -121,11 +122,8 @@ if __name__ == '__main__':
                                 continue
 
                             num_obj = num_objectives[key_4]
-                            name = f'{key_1}_{key_2}_{key_3}_{num_obj}_{key_6}'
+                            base_name = f'{key_1}_{key_2}_{key_3}_{num_obj}_{key_6}'
                             nfe = nfe_settings[key_1][key_3][key_4][key_5]
-                            print('--------------------------------------------------------------------')
-                            print(f"This experiment is {name}, with depth={tree_depth}, num_obj={num_obj}")
-                            print('--------------------------------------------------------------------')
 
                             robust = (key_5 == 'robust')
                             many_obj = (key_4 == 'many_obj')
@@ -133,15 +131,23 @@ if __name__ == '__main__':
 
                             model_func, model_name = model_settings[key_1][key_4][key_5][key_6]
                             model = model_func(model_params, model_name)
-                            start_time = time.time()
 
-                            if key_3 == "moro":
-                                method_params = moro_tree_params(name=name, nfe=nfe, algo=key_2,
-                                                                 root_folder=root_folder, many_obj=many_obj,
-                                                                 robust=robust)
-                                moea_moro(model, method_params, start_time, problem='tree')
-                            else:
-                                method_params = multi_tree_params(name=name, nfe=nfe, algo=key_2,
-                                                                  root_folder=root_folder, many_obj=many_obj,
-                                                                  robust=robust)
-                                moea_multi(model, method_params, start_time, problem='tree')
+                            # ── Replication loop over random seeds ───────────
+                            for seed in seeds:
+                                name = f'{base_name}_seed{seed}'
+                                print('--------------------------------------------------------------------')
+                                print(f"This experiment is {name}, with depth={tree_depth}, num_obj={num_obj}")
+                                print('--------------------------------------------------------------------')
+
+                                start_time = time.time()
+
+                                if key_3 == "moro":
+                                    method_params = moro_tree_params(name=name, nfe=nfe, algo=key_2,
+                                                                     root_folder=root_folder, many_obj=many_obj,
+                                                                     robust=robust, seed=seed)
+                                    moea_moro(model, method_params, start_time, problem='tree')
+                                else:
+                                    method_params = multi_tree_params(name=name, nfe=nfe, algo=key_2,
+                                                                      root_folder=root_folder, many_obj=many_obj,
+                                                                      robust=robust, seed=seed)
+                                    moea_multi(model, method_params, start_time, problem='tree')

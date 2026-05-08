@@ -1,4 +1,5 @@
 import os
+import random
 import time
 
 from ema_workbench import (ScalarOutcome, MultiprocessingEvaluator, Scenario)
@@ -47,6 +48,10 @@ def run_moea(model, params, file_end, start_time, problem):
 
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
+
+    if params.seed is not None:
+        random.seed(params.seed)
+        np.random.seed(params.seed)
 
     scenarios = build_optimization_scenarios(problem)
     num_obj = len(model.outcomes)

@@ -1,5 +1,7 @@
 import os
+import random
 import time
+import numpy as np
 from ema_workbench import (MultiprocessingEvaluator, SequentialEvaluator)
 from ema_workbench.em_framework.optimization import (EpsilonProgress)
 
@@ -10,6 +12,10 @@ def run_moea(model, params, file_end, reference, ref_num, start_time):
 
     if not os.path.exists(params.output_folder):
         os.makedirs(params.output_folder)
+
+    if params.seed is not None:
+        random.seed(params.seed)
+        np.random.seed(params.seed)
 
     with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:
         arch, conv = evaluator.optimize(
