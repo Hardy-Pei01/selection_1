@@ -370,7 +370,32 @@ class PQL(MOAgent):
                     elif is_decomp:
                         self.nd_decomp[state][action] = self.calc_decomp_best(next_state)
                     else:
-                        self.non_dominated[state][action] = self.calc_non_dominated(next_state)
+                        if self.robust:
+                            # ACCUMULATE rather than overwrite. In MORO, the
+                            # same (s, a) can lead to different next_states
+                            # across scenarios because slip flips action.
+                            # Overwriting stores only the latest sample,
+                            # which oscillates and causes late-training PCS
+                            # decline. Union with previous, nd-filter, cap.
+                            new_nd = self.calc_non_dominated(next_state)
+                            prev_nd = self.non_dominated[state][action]
+                            zero_tuple = tuple(np.zeros(self.num_objectives))
+                            if prev_nd == {zero_tuple}:
+                                self.non_dominated[state][action] = new_nd
+                            else:
+                                combined = prev_nd | new_nd
+                                arr = np.asarray(list(combined), dtype=float)
+                                mask = _nd_mask(arr)
+                                nd = {tuple(arr[i]) for i in range(arr.shape[0])
+                                      if mask[i]}
+                                if (self.max_nd_size is not None
+                                        and len(nd) > self.max_nd_size):
+                                    nd = self._subsample_nd(nd)
+                                self.non_dominated[state][action] = nd
+                        else:
+                            self.non_dominated[state][action] = (
+                                self.calc_non_dominated(next_state)
+                            )
 
                 if self.robust:
                     # Per-scenario running mean: update only the active

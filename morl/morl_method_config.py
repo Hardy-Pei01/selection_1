@@ -10,19 +10,21 @@ from params_config import default_tree_scenario, default_tree_scenario_robust, \
 class base_morl_params:
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 robust):
+                 robust, seed=None):
         self.name = name
         self.timesteps = timesteps
         self.scoring = scoring
         self.output_folder = f'{root_folder}/{name}'
         self.robust = robust
+        self.seed = seed
 
 
 class base_tree_morl_params(base_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
-        super().__init__(name, timesteps, scoring, root_folder, robust)
+                 many_obj, robust, num_weight_divisions=5, seed=None):
+        super().__init__(name, timesteps, scoring, root_folder,
+                         robust, seed)
         self.many_obj = many_obj
         self.num_weight_divisions = num_weight_divisions
 
@@ -30,9 +32,9 @@ class base_tree_morl_params(base_morl_params):
 class multi_tree_morl_params(base_tree_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
+                 many_obj, robust, num_weight_divisions=5, seed=None):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions)
+                         many_obj, robust, num_weight_divisions, seed)
 
         self.references = tree_reference_scenarios
 
@@ -40,35 +42,36 @@ class multi_tree_morl_params(base_tree_morl_params):
 class moro_tree_morl_params(base_tree_morl_params):
 
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
+                 many_obj, robust, num_weight_divisions=5, seed=None):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions)
+                         many_obj, robust, num_weight_divisions, seed)
 
 
 # ── Parameter classes — lake ──────────────────────────────────────────────────
 
 class base_lake_morl_params(base_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
-        super().__init__(name, timesteps, scoring, root_folder, robust)
+                 many_obj, robust, num_weight_divisions=5, seed=None):
+        super().__init__(name, timesteps, scoring, root_folder,
+                         robust, seed)
         self.many_obj = many_obj
         self.num_weight_divisions = num_weight_divisions
 
 
 class multi_lake_morl_params(base_lake_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
+                 many_obj, robust, num_weight_divisions=5, seed=None):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions)
+                         many_obj, robust, num_weight_divisions, seed)
 
         self.references = lake_reference_scenarios
 
 
 class moro_lake_morl_params(base_lake_morl_params):
     def __init__(self, name, timesteps, scoring, root_folder,
-                 many_obj, robust, num_weight_divisions=5):
+                 many_obj, robust, num_weight_divisions=5, seed=None):
         super().__init__(name, timesteps, scoring, root_folder,
-                         many_obj, robust, num_weight_divisions)
+                         many_obj, robust, num_weight_divisions, seed)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,7 +120,7 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
             slip_patterns_path=slip_patterns_path,
         )
 
-        policies_df = single.run_morl_single(
+        archive_size = single.run_morl_single(
             env=env,
             scoring=params.scoring,
             timesteps=params.timesteps,
@@ -127,8 +130,9 @@ def morl_multi(params, ref_point, n_obj, csv_path, start_time):
             file_end=file_end,
             ref_num=ref_num if label_refs else None,
             start_time=start_time,
+            seed=params.seed,
         )
-        archives.append(policies_df)
+        archives.append(archive_size)
 
     return archives
 
@@ -145,6 +149,7 @@ def morl_moro(params, ref_point, n_obj, csv_path, start_time):
         output_folder=params.output_folder,
         file_end=file_end,
         start_time=start_time,
+        seed=params.seed,
     )
 
 
@@ -167,7 +172,7 @@ def morl_multi_lake(params, ref_point, n_obj, start_time):
 
         env = _build_lake_env(ref, n_obj)
 
-        policies_df = single.run_morl_single(
+        archive_size = single.run_morl_single(
             env=env,
             scoring=params.scoring,
             timesteps=params.timesteps,
@@ -177,8 +182,9 @@ def morl_multi_lake(params, ref_point, n_obj, start_time):
             file_end=file_end,
             ref_num=ref_num if label_refs else None,
             start_time=start_time,
+            seed=params.seed,
         )
-        archives.append(policies_df)
+        archives.append(archive_size)
 
     return archives
 
@@ -194,4 +200,5 @@ def morl_moro_lake(params, ref_point, n_obj, start_time):
         output_folder=params.output_folder,
         file_end=file_end,
         start_time=start_time,
+        seed=params.seed,
     )

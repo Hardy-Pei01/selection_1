@@ -1,14 +1,11 @@
-import os
 from params_config import (default_tree_scenario, default_tree_scenario_robust,
                            default_lake_scenario, tree_multi_obj, tree_many_obj,
-                           tree_n_scenarios, tree_reference_scenarios,
+                           tree_reference_scenarios,
                            lake_reference_scenarios)
 import moea.moea_single as multi
 import moea.moea_moro as moro
 from ema_workbench import (Scenario)
 from moea.algos import NSGAII, IBEA, MOEAD
-from policy_eval import evaluate_table_archive_robust
-from fruit_tree import FruitTreeEnv
 
 
 class base_params(object):
@@ -73,9 +70,6 @@ def output_file_end(model, params):
 
 
 def moea_multi(model, params, start_time, problem):
-    archives = []
-    convergences = []
-
     base = default_tree_scenario if problem == 'tree' else default_lake_scenario
     base_robust = default_tree_scenario_robust if problem == 'tree' else default_lake_scenario
 
@@ -84,55 +78,22 @@ def moea_multi(model, params, start_time, problem):
     else:
         refs = params.references + [base_robust]
 
+    file_end = output_file_end(model, params)
     for idx, ref in enumerate(refs):
         print('Reference scenario', idx)
-        file_end = output_file_end(model, params)
-        results = multi.run_moea(model, params=params,
-                                 file_end=file_end,
-                                 reference=Scenario('reference', **ref),
-                                 ref_num=idx,
-                                 start_time=start_time)
-        archives.append(results[0])
-        convergences.append(results[1])
-
-    return archives, convergences
+        # Inner run_moea writes archive + convergence CSVs to
+        # params.output_folder; we don't need to retain them here.
+        multi.run_moea(model, params=params,
+                       file_end=file_end,
+                       reference=Scenario('reference', **ref),
+                       ref_num=idx,
+                       start_time=start_time)
 
 
 def moea_moro(model, params, start_time, problem):
     file_end = output_file_end(model, params)
-    archives, convergences = moro.run_moea(model, params=params,
-                                           file_end=file_end,
-                                           start_time=start_time,
-                                           problem=problem)
-
-    if problem == 'tree' and 'table' in model.name.lower():
-        from params_config import slip_patterns_path, tree_depth
-        csv_path = next(
-            (c.value for c in model.constants if c.name == 'csv_path'),
-            None
-        )
-        if csv_path is None:
-            print("  WARNING: csv_path not found in model constants, skipping pruning.")
-        else:
-            archive_path = f'{params.output_folder}/archives_{file_end}.csv'
-            if os.path.exists(archive_path):
-                env_factory = lambda idx: FruitTreeEnv(
-                    depth=tree_depth, reward_dim=len(model.outcomes),
-                    csv_path=csv_path, observe=True,
-                    scenario_index=idx,
-                    slip_patterns_path=slip_patterns_path,
-                )
-                pruned = evaluate_table_archive_robust(
-                    archive_path=archive_path,
-                    depth=tree_depth,
-                    n_obj=len(model.outcomes),
-                    env_factory=env_factory,
-                    n_scenarios=tree_n_scenarios,
-                )
-                pruned.to_csv(
-                    f'{params.output_folder}/archives_{file_end}_pruned.csv',
-                    index=False,
-                )
-                print(f"  Pruned archive: {len(archives)} -> {len(pruned)} solutions")
-
-    return archives, convergences
+    # Inner run_moea writes archive + convergence CSVs.
+    moro.run_moea(model, params=params,
+                  file_end=file_end,
+                  start_time=start_time,
+                  problem=problem)

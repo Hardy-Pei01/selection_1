@@ -7,7 +7,6 @@ from params_config import (
     nd_size_cap_lake, nd_update_freq_tree, nd_update_freq_lake,
     archive_cap_tree, archive_cap_lake, gamma_tree, gamma_lake,
 )
-from policy_eval import extract_policy, extract_lake_policy
 
 
 def run_morl_single(
@@ -20,6 +19,7 @@ def run_morl_single(
         file_end,
         ref_num=None,
         start_time=None,
+        seed=None,
 ):
     os.makedirs(output_folder, exist_ok=True)
 
@@ -40,6 +40,7 @@ def run_morl_single(
         initial_epsilon=1.0,
         epsilon_decay_steps=timesteps,
         final_epsilon=0.05 if is_tree else 0.1,
+        seed=seed,
         num_weight_divisions=num_weight_divisions,
         nd_update_freq=nd_update_freq_tree if is_tree else nd_update_freq_lake,
         max_nd_size=max_nd_size,
@@ -54,7 +55,7 @@ def run_morl_single(
         log_every=max(1, timesteps // 10),
     )
 
-    # ── Build PCS dataframe ───────────────────────────────────────────────
+    # ── Build PCS dataframe (snapshot of agent.archive at start state) ───
     if pcs:
         pcs_arr = np.array([list(v) for v in pcs])
         pcs_df = pd.DataFrame(
@@ -74,33 +75,13 @@ def run_morl_single(
         pcs_df['reference_scenario'] = ref_num
 
     # ── Persist ───────────────────────────────────────────────────────────
-    policy_rows = []
-    for pol_id, target_vec in enumerate(pcs):
-        if is_tree:
-            decisions = extract_policy(agent, target_vec)
-            row = {'policy_id': pol_id}
-            row.update({f'l{i}': d for i, d in enumerate(decisions)})
-        else:
-            decisions = extract_lake_policy(agent, target_vec, env)
-            row = {'policy_id': pol_id}
-            for step, (u1, u2) in enumerate(decisions):
-                row[f'u1_{step}'] = int(u1)
-                row[f'u2_{step}'] = int(u2)
-        policy_rows.append(row)
-
-    policies_df = pd.DataFrame(policy_rows) if policy_rows else pd.DataFrame()
-
-    if ref_num is not None:
-        if not policies_df.empty:
-            policies_df['reference_scenario'] = ref_num
-
+    # Decision sequences are not saved here; they can be re-extracted from
+    # the saved agent on demand.
     suffix = f'_{ref_num}' if ref_num is not None else ''
-    policies_df.to_csv(f'{output_folder}/policies_{file_end}{suffix}.csv', index=False)
     pcs_df.to_csv(f'{output_folder}/pcs_{file_end}{suffix}.csv', index=False)
     conv_df.to_csv(
         f'{output_folder}/convergence_{file_end}{suffix}.csv', index=False
     )
-    # Persist the trained Q-table so policies can be re-extracted later
     agent.save_q_table(f'{output_folder}/agent_{file_end}{suffix}.pkl')
 
-    return policies_df
+    return len(agent.archive)

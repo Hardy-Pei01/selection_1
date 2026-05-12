@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from params_config import lake_multi_obj, lake_many_obj
+from params_config import lake_multi_obj, lake_many_obj, seeds
 from morl.morl_method_config import (
     multi_lake_morl_params,
     moro_lake_morl_params,
@@ -12,24 +12,24 @@ from morl.morl_method_config import (
 )
 
 # ── Top-level output folder ───────────────────────────────────────────────────
-root_folder = './lake_morl'
+root_folder = './lake_rl'
 
 # ── Experiment toggles ────────────────────────────────────────────────────────
 
 run_scoring = {
-    'pareto': 0,
+    'pareto': 1,
     'indicator': 1,
-    'decomposition': 0,
+    'decomposition': 1,
 }
 
 run_scenario_method = {
-    'single': 0,
-    'multi': 1,
+    'single': 1,
+    'multi': 0,
     'moro': 0
 }
 
 obj_uncertain = {
-    'multi_obj': 0,
+    'multi_obj': 1,
     'many_obj': 1
 }
 
@@ -105,54 +105,59 @@ if __name__ == '__main__':
                     ref = ref_points[key_4]
                     nwd = num_weight_divisions[key_4]
                     robust = (key_5 == 'robust')
-                    name = f'{key_1}_{key_3}_{n_obj}'
+                    base_name = f'{key_1}_{key_3}_{n_obj}'
 
-                    print('--------------------------------------------------------------------')
-                    print(f'This experiment is {name}')
-                    print('--------------------------------------------------------------------')
+                    # ── Replication loop over random seeds ───────────
+                    for seed in seeds:
+                        name = f'{base_name}_seed{seed}'
+                        print('--------------------------------------------------------------------')
+                        print(f'This experiment is {name}')
+                        print('--------------------------------------------------------------------')
 
-                    start_time = time.time()
+                        start_time = time.time()
 
-                    if key_3 == 'moro':
-                        params = moro_lake_morl_params(
-                            name=name,
-                            timesteps=timesteps,
-                            scoring=key_1,
-                            root_folder=root_folder,
-                            many_obj=(key_4 == 'many_obj'),
-                            robust=robust,
-                            num_weight_divisions=nwd,
+                        if key_3 == 'moro':
+                            params = moro_lake_morl_params(
+                                name=name,
+                                timesteps=timesteps,
+                                scoring=key_1,
+                                root_folder=root_folder,
+                                many_obj=(key_4 == 'many_obj'),
+                                robust=robust,
+                                num_weight_divisions=nwd,
+                                seed=seed,
+                            )
+                            result = morl_moro_lake(
+                                params=params,
+                                ref_point=ref,
+                                n_obj=n_obj,
+                                start_time=start_time,
+                            )
+
+                        else:
+                            params = multi_lake_morl_params(
+                                name=name,
+                                timesteps=timesteps,
+                                scoring=key_1,
+                                root_folder=root_folder,
+                                many_obj=(key_4 == 'many_obj'),
+                                robust=robust,
+                                num_weight_divisions=nwd,
+                                seed=seed,
+                            )
+                            result = morl_multi_lake(
+                                params=params,
+                                ref_point=ref,
+                                n_obj=n_obj,
+                                start_time=start_time,
+                            )
+
+                        elapsed = int(time.time() - start_time)
+                        if isinstance(result, list):
+                            total_pcs = sum(result)
+                        else:
+                            total_pcs = result if result is not None else 0
+                        print(
+                            f'  Done in {time.strftime("%H:%M:%S", time.gmtime(elapsed))}. '
+                            f'Total PCS size: {total_pcs}.'
                         )
-                        result = morl_moro_lake(
-                            params=params,
-                            ref_point=ref,
-                            n_obj=n_obj,
-                            start_time=start_time,
-                        )
-
-                    else:
-                        params = multi_lake_morl_params(
-                            name=name,
-                            timesteps=timesteps,
-                            scoring=key_1,
-                            root_folder=root_folder,
-                            many_obj=(key_4 == 'many_obj'),
-                            robust=robust,
-                            num_weight_divisions=nwd,
-                        )
-                        result = morl_multi_lake(
-                            params=params,
-                            ref_point=ref,
-                            n_obj=n_obj,
-                            start_time=start_time,
-                        )
-
-                    elapsed = int(time.time() - start_time)
-                    if isinstance(result, list):
-                        total_pcs = sum(len(r) for r in result if not r.empty)
-                    else:
-                        total_pcs = len(result) if result is not None else 0
-                    print(
-                        f'  Done in {time.strftime("%H:%M:%S", time.gmtime(elapsed))}. '
-                        f'Total PCS size: {total_pcs}.'
-                    )

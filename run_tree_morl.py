@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from params_config import tree_depth, tree_multi_obj, tree_many_obj
+from params_config import tree_depth, tree_multi_obj, tree_many_obj, seeds
 from morl.morl_method_config import (
     multi_tree_morl_params,
     moro_tree_morl_params,
@@ -51,7 +51,7 @@ timestep_settings['single']['many_obj']['deterministic'] = 100000
 timestep_settings['multi']['multi_obj']['robust'] = 100000
 timestep_settings['multi']['many_obj']['robust'] = 100000
 timestep_settings['moro']['multi_obj']['robust'] = 100000
-timestep_settings['moro']['many_obj']['robust'] = 200000
+timestep_settings['moro']['many_obj']['robust'] = 100000
 
 # ── PQL hyperparameters ───────────────────────────────────────────────────────
 # Objective-count-dependent settings (no moea equivalent — PQL-specific).
@@ -104,61 +104,66 @@ if __name__ == '__main__':
                     csv = csv_paths[key_4]
                     ref = ref_points[key_4]
                     nwd = num_weight_divisions[key_4]
-                    name = f'{key_1}_{key_3}_{n_obj}'
-
-                    print('--------------------------------------------------------------------')
-                    print(f"This experiment is {name}, with depth={tree_depth}, num_obj={n_obj}")
-                    print('--------------------------------------------------------------------')
+                    base_name = f'{key_1}_{key_3}_{n_obj}'
 
                     # robust=0 for 'single' (non_param), 1 for 'multi'/'moro' (param)
                     robust = (key_5 == 'robust')
 
-                    start_time = time.time()
+                    # ── Replication loop over random seeds ───────────
+                    for seed in seeds:
+                        name = f'{base_name}_seed{seed}'
+                        print('--------------------------------------------------------------------')
+                        print(f"This experiment is {name}, with depth={tree_depth}, num_obj={n_obj}")
+                        print('--------------------------------------------------------------------')
 
-                    if key_3 == 'moro':
-                        # Robust optimisation across all scenarios — mirrors moea_moro
-                        params = moro_tree_morl_params(
-                            name=name,
-                            timesteps=timesteps,
-                            scoring=key_1,
-                            root_folder=root_folder,
-                            many_obj=(key_4 == 'many_obj'),
-                            robust=robust,
-                            num_weight_divisions=nwd,
-                        )
-                        result = morl_moro(
-                            params=params,
-                            ref_point=ref,
-                            n_obj=n_obj,
-                            csv_path=csv,
-                            start_time=start_time,
-                        )
+                        start_time = time.time()
 
-                    else:
-                        # Single scenario or separate-per-reference — mirrors moea_multi
-                        params = multi_tree_morl_params(
-                            name=name,
-                            timesteps=timesteps,
-                            scoring=key_1,
-                            root_folder=root_folder,
-                            many_obj=(key_4 == 'many_obj'),
-                            robust=robust,
-                            num_weight_divisions=nwd,
-                        )
-                        result = morl_multi(
-                            params=params,
-                            ref_point=ref,
-                            n_obj=n_obj,
-                            csv_path=csv,
-                            start_time=start_time,
-                        )
+                        if key_3 == 'moro':
+                            # Robust optimisation across all scenarios — mirrors moea_moro
+                            params = moro_tree_morl_params(
+                                name=name,
+                                timesteps=timesteps,
+                                scoring=key_1,
+                                root_folder=root_folder,
+                                many_obj=(key_4 == 'many_obj'),
+                                robust=robust,
+                                num_weight_divisions=nwd,
+                                seed=seed,
+                            )
+                            result = morl_moro(
+                                params=params,
+                                ref_point=ref,
+                                n_obj=n_obj,
+                                csv_path=csv,
+                                start_time=start_time,
+                            )
 
-                    elapsed = int(time.time() - start_time)
-                    if isinstance(result, list):
-                        total_pcs = sum(len(r) for r in result if not r.empty)
-                    else:
-                        total_pcs = len(result)
-                    print(
-                        f'  Done in {time.strftime("%H:%M:%S", time.gmtime(elapsed))}. '
-                        f'Total PCS size: {total_pcs}.'
-                    )
+                        else:
+                            # Single scenario or separate-per-reference — mirrors moea_multi
+                            params = multi_tree_morl_params(
+                                name=name,
+                                timesteps=timesteps,
+                                scoring=key_1,
+                                root_folder=root_folder,
+                                many_obj=(key_4 == 'many_obj'),
+                                robust=robust,
+                                num_weight_divisions=nwd,
+                                seed=seed,
+                            )
+                            result = morl_multi(
+                                params=params,
+                                ref_point=ref,
+                                n_obj=n_obj,
+                                csv_path=csv,
+                                start_time=start_time,
+                            )
+
+                        elapsed = int(time.time() - start_time)
+                        if isinstance(result, list):
+                            total_pcs = sum(result)
+                        else:
+                            total_pcs = result if result is not None else 0
+                        print(
+                            f'  Done in {time.strftime("%H:%M:%S", time.gmtime(elapsed))}. '
+                            f'Total PCS size: {total_pcs}.'
+                        )

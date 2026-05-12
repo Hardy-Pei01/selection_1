@@ -1,6 +1,6 @@
 from ema_workbench import ema_logging
 from params_config import (multi_objs_lake_params, many_objs_lake_params, lake_multi_obj,
-                           lake_many_obj)
+                           lake_many_obj, seeds)
 from moea.moea_method_config import multi_lake_params, moro_lake_params, moea_moro, moea_multi
 from moea.model_builder import (inter_lake_model, inter_robust_lake_model, dps_lake_model,
                                 dps_robust_lake_model)
@@ -11,22 +11,22 @@ activate_logging = 1
 root_folder = f'./lake_moea'
 
 run_policy = {
-    'intertemporal': 0,
+    'intertemporal': 1,
     'dps': 1
 }
 run_evo_method = {
-    'NSGAII': 0,
+    'NSGAII': 1,
     'IBEA': 1,
     'MOEAD': 1
 }
 run_scenario_method = {
-    'single': 0,
+    'single': 1,
     'multi': 1,
-    'moro': 0
+    'moro': 1
 }
 
 obj_uncertain = {
-    'multi_obj': 0,
+    'multi_obj': 1,
     'many_obj': 1
 }
 
@@ -99,11 +99,8 @@ if __name__ == '__main__':
                             continue
 
                         num_obj = num_objectives[key_4]
-                        name = f'{key_1}_{key_2}_{key_3}_{num_obj}'
+                        base_name = f'{key_1}_{key_2}_{key_3}_{num_obj}'
                         nfe = nfe_settings[key_1][key_3][key_4][key_5]
-                        print('--------------------------------------------------------------------')
-                        print(f"This experiment is {name}")
-                        print('--------------------------------------------------------------------')
 
                         robust = (key_5 == 'robust')
                         many_obj = (key_4 == 'many_obj')
@@ -111,14 +108,21 @@ if __name__ == '__main__':
                         model_func, model_name = model_settings[key_1][key_4][key_5]
                         model = model_func(model_params, model_name)
 
-                        start_time = time.time()
-                        if key_3 == "moro":
-                            method_params = moro_lake_params(name=name, nfe=nfe, algo=key_2,
-                                                             root_folder=root_folder, many_obj=many_obj,
-                                                             robust=robust)
-                            moea_moro(model, method_params, start_time, problem='lake')
-                        else:
-                            method_params = multi_lake_params(name=name, nfe=nfe, algo=key_2,
-                                                              root_folder=root_folder, many_obj=many_obj,
-                                                              robust=robust)
-                            moea_multi(model, method_params, start_time, problem='lake')
+                        # ── Replication loop over random seeds ───────
+                        for seed in seeds:
+                            name = f'{base_name}_seed{seed}'
+                            print('--------------------------------------------------------------------')
+                            print(f"This experiment is {name}")
+                            print('--------------------------------------------------------------------')
+
+                            start_time = time.time()
+                            if key_3 == "moro":
+                                method_params = moro_lake_params(name=name, nfe=nfe, algo=key_2,
+                                                                 root_folder=root_folder, many_obj=many_obj,
+                                                                 robust=robust, seed=seed)
+                                moea_moro(model, method_params, start_time, problem='lake')
+                            else:
+                                method_params = multi_lake_params(name=name, nfe=nfe, algo=key_2,
+                                                                  root_folder=root_folder, many_obj=many_obj,
+                                                                  robust=robust, seed=seed)
+                                moea_multi(model, method_params, start_time, problem='lake')
