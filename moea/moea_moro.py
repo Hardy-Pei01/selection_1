@@ -54,7 +54,7 @@ def run_moea(model, params, file_end, start_time, problem):
         np.random.seed(params.seed)
 
     scenarios = build_optimization_scenarios(problem)
-    num_obj = len(model.outcomes)
+    num_obj = sum(1 for o in model.outcomes if o.kind != ScalarOutcome.INFO)
     robustness_functions = build_robustness_functions(num_obj)
 
     with MultiprocessingEvaluator(model, n_processes=-2) as evaluator:

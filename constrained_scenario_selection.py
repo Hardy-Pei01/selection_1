@@ -59,6 +59,7 @@ import pandas as pd
 from scipy.spatial.distance import pdist
 
 from two_lake import TwoLakeEnv
+from constrained_two_lake import ConstrainedTwoLakeEnv
 from params_config import total_years, years_per_action
 
 # ── Lake configuration ────────────────────────────────────────────────────────
@@ -121,6 +122,80 @@ def generate_scenarios(n: int, rng: np.random.Generator) -> pd.DataFrame:
         else:
             cols[name] = lo + u[:, j] * (hi - lo)
     return pd.DataFrame(cols)
+
+
+def u0_keeps_lakes_below_threshold(b1, q1, b2, q2,
+                                   inflow_seed1, inflow_seed2) -> bool:
+    """Check that the all-zero-emissions policy keeps both lakes under the
+    constraint threshold for the whole episode.
+
+    A scenario passing this check has at least one trivially-feasible policy
+    (do nothing) — which guarantees the constrained-mode optimizer faces a
+    non-empty feasible set on this scenario, no matter the threshold or
+    aggregation choice downstream.
+
+    Uses ConstrainedTwoLakeEnv's `info['feasible']` (which is True iff
+    `n_violations_1 == 0` AND `n_violations_2 == 0`).
+    """
+    env = ConstrainedTwoLakeEnv(
+        b1=float(b1), q1=float(q1),
+        b2=float(b2), q2=float(q2),
+        inflow_seed1=int(inflow_seed1),
+        inflow_seed2=int(inflow_seed2),
+        num_obj=6,  # 6-obj so info['feasible'] checks BOTH lakes
+        total_years=total_years,
+        years_per_action=years_per_action,
+    )
+    env.reset()
+    info = {}
+    for _ in range(N_GYM_STEPS):
+        _, _, _, _, info = env.step(np.array([0, 0]))
+    return bool(info['feasible'])
+
+
+def generate_feasible_scenarios(n: int, rng: np.random.Generator,
+                                oversample_factor: float = 2.0,
+                                max_batches: int = 6) -> pd.DataFrame:
+    """LHS over deep uncertainties, filtered to scenarios where the all-zero
+    policy is feasible. Oversamples in batches and concatenates until n are
+    collected; raises if `max_batches` batches can't supply enough.
+
+    Why this matters: with 22% of the uncertainty space producing
+    structurally infeasible scenarios (lakes tip even at u=0), raw LHS gives
+    ~78% feasibility. We want the K reference scenarios all to admit at
+    least one feasible policy — guaranteeing the constrained optimizer's
+    feasible set is non-empty per reference.
+    """
+    feasible = []
+    total = 0
+    for attempt in range(max_batches):
+        remaining = n - total
+        if remaining <= 0:
+            break
+        # Generous oversample: feasibility rate is ~78%, so 2× is safe.
+        batch_size = max(int(remaining * oversample_factor), 16)
+        batch = generate_scenarios(batch_size, rng)
+        mask = np.array([
+            u0_keeps_lakes_below_threshold(
+                row['b1'], row['q1'], row['b2'], row['q2'],
+                row['inflow_seed1'], row['inflow_seed2'])
+            for _, row in batch.iterrows()
+        ])
+        n_kept = int(mask.sum())
+        rate = n_kept / len(batch) if len(batch) else 0.0
+        print(f"  attempt {attempt + 1}: drew {len(batch)}, kept {n_kept} "
+              f"({100*rate:.1f}% feasible)")
+        feasible.append(batch[mask])
+        total += n_kept
+
+    combined = pd.concat(feasible, ignore_index=True)
+    if len(combined) < n:
+        raise RuntimeError(
+            f"Could not generate {n} feasible scenarios in {max_batches} "
+            f"batches (got {len(combined)}). Try increasing oversample_factor "
+            f"or max_batches."
+        )
+    return combined.head(n).reset_index(drop=True)
 
 
 # ── Stage 1c: run experiments (every policy × every scenario) ────────────────
@@ -328,6 +403,7 @@ def run(filter_type: str = "mean",
         exhaustive_cap: int = 1_000_000,
         n_obj: int = 6,
         min_undesired: int = None,
+        require_feasible_u0: bool = True,
         out_path: str = "lake_reference_scenarios.csv"):
     """Three-stage Bartholomew & Kwakkel (2020) scenario selection.
 
@@ -339,6 +415,12 @@ def run(filter_type: str = "mean",
     the original strict filter). With 6 anti-correlated lake objectives the
     strict filter often empties the candidate set; pass e.g.
     `min_undesired=4` to relax.
+
+    `require_feasible_u0` — if True (default), restrict the LHS candidate
+    pool to scenarios where the all-zero-emissions policy keeps both lakes
+    below MAX_P_THRESHOLD. Guarantees every chosen reference scenario admits
+    at least one feasible policy (the do-nothing policy), so the constrained
+    optimizer's feasible set is non-empty per reference.
     """
     rng = np.random.default_rng(seed)
 
@@ -346,8 +428,14 @@ def run(filter_type: str = "mean",
     print(f"Stage 1: sampling {n_policies} random intertemporal policies...")
     policies = sample_random_intertemporal_policies(n_policies, rng)
 
-    print(f"  generating {n_scenarios} LHS scenarios over deep uncertainties...")
-    scenarios = generate_scenarios(n_scenarios, rng)
+    if require_feasible_u0:
+        print(f"  generating {n_scenarios} LHS scenarios where u=0 is feasible "
+              f"(both lakes stay below MAX_P_THRESHOLD)...")
+        scenarios = generate_feasible_scenarios(n_scenarios, rng)
+    else:
+        print(f"  generating {n_scenarios} LHS scenarios over deep uncertainties "
+              f"(no feasibility filter)...")
+        scenarios = generate_scenarios(n_scenarios, rng)
 
     # Stage 1c
     print(f"  running {n_policies}×{n_scenarios} = {n_policies*n_scenarios} "
@@ -451,6 +539,13 @@ if __name__ == "__main__":
                         "relevant. Defaults to all (n_obj). Use a smaller "
                         "value to relax the filter when 6-obj joint filter "
                         "empties.")
+    p.add_argument("--allow-infeasible-u0", action="store_true",
+                   help="By default the LHS candidate pool is restricted to "
+                        "scenarios where the all-zero-emissions policy keeps "
+                        "both lakes below MAX_P_THRESHOLD, guaranteeing every "
+                        "chosen reference admits at least one feasible policy "
+                        "(do-nothing). Pass this flag to disable the filter "
+                        "and sample the full uncertainty space.")
     p.add_argument("--out", default="lake_reference_scenarios.csv")
     args = p.parse_args()
 
@@ -470,4 +565,5 @@ if __name__ == "__main__":
         exhaustive_cap=args.exhaustive_cap,
         n_obj=args.n_obj,
         min_undesired=args.min_undesired,
+        require_feasible_u0=not args.allow_infeasible_u0,
         out_path=args.out)

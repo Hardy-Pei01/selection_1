@@ -1,14 +1,20 @@
 from ema_workbench import ema_logging
-from params_config import (multi_objs_lake_params, many_objs_lake_params, lake_multi_obj,
-                           lake_many_obj, seeds)
-from moea.moea_method_config import multi_lake_params, moro_lake_params, moea_moro, moea_multi
-from moea.model_builder import (inter_lake_model, inter_robust_lake_model, dps_lake_model,
-                                dps_robust_lake_model)
+from params_config import (constrained_multi_objs_lake_params,
+                           constrained_many_objs_lake_params,
+                           lake_multi_obj, lake_many_obj, seeds)
+from moea.moea_method_config import (constrained_multi_lake_params,
+                                     constrained_moro_lake_params,
+                                     constrained_moea_moro,
+                                     constrained_moea_multi)
+from moea.model_builder import (constrained_inter_lake_model,
+                                constrained_inter_robust_lake_model,
+                                constrained_dps_lake_model,
+                                constrained_dps_robust_lake_model)
 from collections import defaultdict
 import time
 
 activate_logging = 1
-root_folder = f'./lake_ea'
+root_folder = f'./constrained_lake_ea'
 
 run_policy = {
     'intertemporal': 1,
@@ -55,14 +61,14 @@ nfe_settings['dps']['moro']['multi_obj']['robust'] = 100000
 nfe_settings['dps']['moro']['many_obj']['robust'] = 200000
 
 model_settings = nested_dict()
-model_settings['intertemporal']['multi_obj']['deterministic'] = (inter_lake_model, 'interMulti')
-model_settings['intertemporal']['many_obj']['deterministic'] = (inter_lake_model, 'interMany')
-model_settings['intertemporal']['multi_obj']['robust'] = (inter_robust_lake_model, 'interMultiRobust')
-model_settings['intertemporal']['many_obj']['robust'] = (inter_robust_lake_model, 'interManyRobust')
-model_settings['dps']['multi_obj']['deterministic'] = (dps_lake_model, 'dpsMulti')
-model_settings['dps']['many_obj']['deterministic'] = (dps_lake_model, 'dpsMany')
-model_settings['dps']['multi_obj']['robust'] = (dps_robust_lake_model, 'dpsMultiRobust')
-model_settings['dps']['many_obj']['robust'] = (dps_robust_lake_model, 'dpsManyRobust')
+model_settings['intertemporal']['multi_obj']['deterministic'] = (constrained_inter_lake_model, 'interMulti')
+model_settings['intertemporal']['many_obj']['deterministic'] = (constrained_inter_lake_model, 'interMany')
+model_settings['intertemporal']['multi_obj']['robust'] = (constrained_inter_robust_lake_model, 'interMultiRobust')
+model_settings['intertemporal']['many_obj']['robust'] = (constrained_inter_robust_lake_model, 'interManyRobust')
+model_settings['dps']['multi_obj']['deterministic'] = (constrained_dps_lake_model, 'dpsMulti')
+model_settings['dps']['many_obj']['deterministic'] = (constrained_dps_lake_model, 'dpsMany')
+model_settings['dps']['multi_obj']['robust'] = (constrained_dps_robust_lake_model, 'dpsMultiRobust')
+model_settings['dps']['many_obj']['robust'] = (constrained_dps_robust_lake_model, 'dpsManyRobust')
 
 num_objectives = {
     'multi_obj': lake_multi_obj,
@@ -104,7 +110,8 @@ if __name__ == '__main__':
 
                         robust = (key_5 == 'robust')
                         many_obj = (key_4 == 'many_obj')
-                        model_params = many_objs_lake_params if many_obj else multi_objs_lake_params
+                        model_params = (constrained_many_objs_lake_params if many_obj
+                                        else constrained_multi_objs_lake_params)
                         model_func, model_name = model_settings[key_1][key_4][key_5]
                         model = model_func(model_params, model_name)
 
@@ -117,12 +124,16 @@ if __name__ == '__main__':
 
                             start_time = time.time()
                             if key_3 == "moro":
-                                method_params = moro_lake_params(name=name, nfe=nfe, algo=key_2,
-                                                                 root_folder=root_folder, many_obj=many_obj,
-                                                                 robust=robust, seed=seed)
-                                moea_moro(model, method_params, start_time, problem='lake')
+                                method_params = constrained_moro_lake_params(
+                                    name=name, nfe=nfe, algo=key_2,
+                                    root_folder=root_folder, many_obj=many_obj,
+                                    robust=robust, seed=seed)
+                                constrained_moea_moro(model, method_params,
+                                                      start_time, problem='lake')
                             else:
-                                method_params = multi_lake_params(name=name, nfe=nfe, algo=key_2,
-                                                                  root_folder=root_folder, many_obj=many_obj,
-                                                                  robust=robust, seed=seed)
-                                moea_multi(model, method_params, start_time, problem='lake')
+                                method_params = constrained_multi_lake_params(
+                                    name=name, nfe=nfe, algo=key_2,
+                                    root_folder=root_folder, many_obj=many_obj,
+                                    robust=robust, seed=seed)
+                                constrained_moea_multi(model, method_params,
+                                                       start_time, problem='lake')

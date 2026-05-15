@@ -2,6 +2,10 @@ from ema_workbench import (Model, IntegerParameter, RealParameter)
 from moea.fruit_tree_moea import fruit_tree_inter, fruit_tree_table, fruit_tree_inter_robust, fruit_tree_table_robust
 from moea.two_lake_moea import two_lake_inter, two_lake_inter_robust, two_lake_dps, two_lake_dps_robust
 from params_config import non_observable_constants_multi, non_observable_constants_many
+from moea.two_lake_moea import (constrained_two_lake_inter,
+                                constrained_two_lake_inter_robust,
+                                constrained_two_lake_dps,
+                                constrained_two_lake_dps_robust)
 
 
 def inter_base_tree_model(intertemporal, params):
@@ -148,4 +152,38 @@ def dps_robust_lake_model(params, model_name):
     dps.uncertainties = params['uncertainties']
     dps.outcomes = params['outcomes']
 
+    return dps
+
+
+# ================================================================
+# Constrained two-lake builders — parallel infrastructure
+# ================================================================
+
+def constrained_inter_lake_model(params, model_name):
+    intertemporal = Model(model_name, function=constrained_two_lake_inter)
+    intertemporal = inter_base_lake_model(intertemporal, params)
+    intertemporal.outcomes = params['outcomes']
+    return intertemporal
+
+
+def constrained_inter_robust_lake_model(params, model_name):
+    intertemporal = Model(model_name, function=constrained_two_lake_inter_robust)
+    intertemporal = inter_base_lake_model(intertemporal, params)
+    intertemporal.uncertainties = params['uncertainties']
+    intertemporal.outcomes = params['outcomes']
+    return intertemporal
+
+
+def constrained_dps_lake_model(params, model_name):
+    dps = Model(model_name, function=constrained_two_lake_dps)
+    dps = dps_base_lake_model(dps, params)
+    dps.outcomes = params['outcomes']
+    return dps
+
+
+def constrained_dps_robust_lake_model(params, model_name):
+    dps = Model(model_name, function=constrained_two_lake_dps_robust)
+    dps = dps_base_lake_model(dps, params)
+    dps.uncertainties = params['uncertainties']
+    dps.outcomes = params['outcomes']
     return dps

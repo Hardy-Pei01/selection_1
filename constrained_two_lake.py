@@ -5,8 +5,18 @@ from scipy.optimize import brentq
 LAKE_BINS = np.array([0.0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 1.0, 3.0, 12.0])
 REDUCED_EMISSIONS = np.array([0.00, 0.02, 0.04, 0.06, 0.08, 0.10])
 
+# Hard-constraint threshold on max_P. Mirrors Bartholomew & Kwakkel (2020):
+# any year where X_lake > MAX_P_THRESHOLD is a constraint violation; a
+# policy is infeasible if it has any violation in any scenario.
+MAX_P_THRESHOLD = 2.5
 
-class TwoLakeEnv(gym.Env):
+# Per-violating-year, per-axis penalty. Sustained — every year above the
+# threshold incurs the penalty, applied uniformly to every reward dimension.
+VIOLATION_PENALTY = 10.0
+
+
+class ConstrainedTwoLakeEnv(gym.Env):
+    """Two-lake problem with hard max_P constraint."""
 
     def __init__(
             self,
@@ -56,7 +66,7 @@ class TwoLakeEnv(gym.Env):
         # --- Time structure ---
         self.total_years = total_years
         self.years_per_action = years_per_action
-        self.n_gym_steps = total_years // years_per_action  # e.g. 10 steps
+        self.n_gym_steps = total_years // years_per_action
         self.inflow_seed1 = inflow_seed1
         self.inflow_seed2 = inflow_seed2
         self.num_obj = num_obj
@@ -76,7 +86,7 @@ class TwoLakeEnv(gym.Env):
         self.Pcrit2 = Pcrit2 if Pcrit2 is not None else \
             brentq(lambda x: x ** self.q2 / (1 + x ** self.q2) - self.b2 * x, 0.01, 1.5)
 
-        # --- Natural inflows — generated once at construction using seed ---
+        # --- Natural inflows — generated once at construction ---
         inflow_rng1 = np.random.default_rng(self.inflow_seed1)
         self._inflows1 = inflow_rng1.lognormal(
             self._ln_mean, self._ln_sigma, size=total_years)
@@ -85,11 +95,8 @@ class TwoLakeEnv(gym.Env):
             self._ln_mean, self._ln_sigma, size=total_years)
 
         # --- Spaces ---
-        # Actions: emission level for each lake, held for years_per_action years.
-        # 6 discrete levels mapped to REDUCED_EMISSIONS = [0.00, 0.02, ..., 0.10].
         self.action_space = gym.spaces.MultiDiscrete([6, 6])
 
-        # Observations: [P_lake1_bin, P_lake2_bin, gym_step_bin]
         n_bins = len(LAKE_BINS) - 1
         self.observation_space = gym.spaces.Box(
             low=np.array([0, 0, 0], dtype=np.int32),
@@ -97,7 +104,6 @@ class TwoLakeEnv(gym.Env):
             dtype=np.int32,
         )
 
-        # Reward space (6 objectives) — informational, used by MORL libraries
         self.reward_space = gym.spaces.Box(
             low=np.full(num_obj, -np.inf, dtype=np.float32),
             high=np.full(num_obj, np.inf, dtype=np.float32),
@@ -109,9 +115,15 @@ class TwoLakeEnv(gym.Env):
         self.X2 = None
         self.gym_step = None
         # nan sentinel — inertia is not counted for the first gym step,
-        # matching EMA workbench where np.diff starts from decisions[1]-decisions[0]
+        # since there's no preceding action to compare against.
         self.prev_u1 = np.nan
         self.prev_u2 = np.nan
+        # --- Constraint tracking (not part of observation) ---
+        self._running_max_X1 = 0.0
+        self._running_max_X2 = 0.0
+        # Cumulative count of violating years (X > MAX_P_THRESHOLD).
+        self._n_violations_1 = 0
+        self._n_violations_2 = 0
 
     # ------------------------------------------------------------------
     # Gymnasium API
@@ -124,7 +136,10 @@ class TwoLakeEnv(gym.Env):
         self.gym_step = 0
         self.prev_u1 = np.nan
         self.prev_u2 = np.nan
-
+        self._running_max_X1 = 0.0
+        self._running_max_X2 = 0.0
+        self._n_violations_1 = 0
+        self._n_violations_2 = 0
         return self._obs(), {}
 
     def step(self, action):
@@ -138,7 +153,7 @@ class TwoLakeEnv(gym.Env):
         self.X1 = float(X1_new)
         self.X2 = float(X2_new)
 
-        # --- Compute 6 objectives ---
+        # --- Compute 6 objectives (identical to TwoLakeEnv) ---
         # Absolute year indices for discounting
         year_start = self.gym_step * self.years_per_action
         years = np.arange(year_start, year_start + self.years_per_action)
@@ -146,35 +161,68 @@ class TwoLakeEnv(gym.Env):
 
         utility1 = float(np.sum(self.alpha * u1 * discount))
         utility2 = float(np.sum(self.alpha * u2 * discount))
-        reliability1 = (float(np.mean(X1_traj < self.Pcrit1)) * self.years_per_action / self.total_years)
-        reliability2 = (float(np.mean(X2_traj < self.Pcrit2)) * self.years_per_action / self.total_years)
+        reliability1 = (float(np.mean(X1_traj < self.Pcrit1))
+                        * self.years_per_action / self.total_years)
+        reliability2 = (float(np.mean(X2_traj < self.Pcrit2))
+                        * self.years_per_action / self.total_years)
         inertia1 = (float(not np.isnan(self.prev_u1) and abs(u1 - self.prev_u1) > 0.02)
                     * self.years_per_action / self.total_years)
         inertia2 = (float(not np.isnan(self.prev_u2) and abs(u2 - self.prev_u2) > 0.02)
                     * self.years_per_action / self.total_years)
 
-        # Reward vector — sign convention: positive = better for the agent
-        # RL maximises rewards, so minimisation objectives are negated
+        # --- Constraint tracking ---
+        # Update running max for the info dict and feasibility checks.
+        step_max1 = float(np.max(X1_traj))
+        step_max2 = float(np.max(X2_traj))
+        self._running_max_X1 = max(self._running_max_X1, step_max1)
+        self._running_max_X2 = max(self._running_max_X2, step_max2)
+
+        # Count years in this step's trajectory exceeding the threshold.
+        n_violating_1 = int(np.sum(X1_traj > MAX_P_THRESHOLD))
+        n_violating_2 = int(np.sum(X2_traj > MAX_P_THRESHOLD))
+        self._n_violations_1 += n_violating_1
+        self._n_violations_2 += n_violating_2
+
+        # --- Hard-constraint penalty (applied uniformly to all axes) ---
+        if self.num_obj == 2:
+            # 2-obj mode: lake 2 violations are not counted (lake 2 is
+            # invisible to the agent in this configuration).
+            penalty = -VIOLATION_PENALTY * n_violating_1
+        else:
+            # 6-obj mode: any violation in either lake invalidates the
+            # policy; penalty applied uniformly across all dimensions.
+            penalty = -VIOLATION_PENALTY * (n_violating_1 + n_violating_2)
+
+        # --- Assemble reward vector (penalty added to every axis) ---
+        # Sign convention: positive = better for the agent.
         rewards = np.array([
-            utility1,
-            utility2,
-            reliability1,
-            reliability2,
-            -inertia1,
-            -inertia2,
+            utility1 + penalty,
+            utility2 + penalty,
+            reliability1 + penalty,
+            reliability2 + penalty,
+            -inertia1 + penalty,
+            -inertia2 + penalty,
         ], dtype=np.float32)
 
         # --- Advance step counter ---
         self.prev_u1 = u1
         self.prev_u2 = u2
         self.gym_step += 1
-
         terminated = self.gym_step >= self.n_gym_steps
 
+        # --- 2-obj projection (lake 1 only) ---
         if self.num_obj == 2:
-            rewards = rewards[[0, 2]]  # utility1, reliability1
+            rewards = rewards[[0, 2]]  # (utility1, reliability1)
 
-        return self._obs(), rewards, terminated, False, {}
+        info = {
+            'n_violations_1': self._n_violations_1,
+            'n_violations_2': self._n_violations_2,
+            'feasible': (self._n_violations_1 == 0
+                         and (self.num_obj == 2 or self._n_violations_2 == 0)),
+            'running_max_X1': self._running_max_X1,
+            'running_max_X2': self._running_max_X2,
+        }
+        return self._obs(), rewards, terminated, False, info
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -190,8 +238,7 @@ class TwoLakeEnv(gym.Env):
         return np.array([x1_bin, x2_bin, step_bin], dtype=np.int32)
 
     def _simulate(self, u1: float, u2: float):
-        """
-        Run years_per_action steps of both lake dynamics, reading
+        """Run years_per_action steps of both lake dynamics, reading
         pre-computed inflows from the episode arrays.
         """
         year_start = self.gym_step * self.years_per_action
@@ -206,12 +253,9 @@ class TwoLakeEnv(gym.Env):
         b1, q1 = self.b1, self.q1
         b2, q2 = self.b2, self.q2
 
-        # First element: pre-step state (X[0]=0 for step 0, X[10] for step 1, ...)
-        # This ensures trajectories span X[0..total_years-1], matching EMA's convention.
         X1_traj[0] = X1
         X2_traj[0] = X2
 
-        # n-1 updates stored in trajectory  (inflows[0..n-2])
         for i in range(1, n):
             X1 = ((1 - b1) * X1
                   + X1 ** q1 / (1 + X1 ** q1)
@@ -224,7 +268,6 @@ class TwoLakeEnv(gym.Env):
             X1_traj[i] = X1
             X2_traj[i] = X2
 
-        # Final update for new env state — uses inflows[n-1], not stored in trajectory
         X1_new = ((1 - b1) * X1
                   + X1 ** q1 / (1 + X1 ** q1)
                   + u1

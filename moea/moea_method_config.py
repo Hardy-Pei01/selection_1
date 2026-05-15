@@ -1,10 +1,10 @@
 from params_config import (default_tree_scenario, default_tree_scenario_robust,
                            default_lake_scenario, tree_multi_obj, tree_many_obj,
-                           tree_reference_scenarios,
-                           lake_reference_scenarios)
+                           tree_reference_scenarios, lake_reference_scenarios,
+                           constrained_lake_reference_scenarios)
 import moea.moea_single as multi
 import moea.moea_moro as moro
-from ema_workbench import (Scenario)
+from ema_workbench import Scenario
 from moea.algos import NSGAII, IBEA, MOEAD
 
 
@@ -93,6 +93,59 @@ def moea_multi(model, params, start_time, problem):
 def moea_moro(model, params, start_time, problem):
     file_end = output_file_end(model, params)
     # Inner run_moea writes archive + convergence CSVs.
+    moro.run_moea(model, params=params,
+                  file_end=file_end,
+                  start_time=start_time,
+                  problem=problem)
+
+
+# ================================================================
+# Constrained two-lake method config — parallel infrastructure
+# ================================================================
+
+class base_constrained_lake_params(base_params):
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, robust, seed)
+        if many_obj:
+            self.epsilons = [0.5, 0.5, 0.5, 0.5, 0.1, 0.1]
+        else:
+            self.epsilons = [0.05, 0.05]
+
+
+class constrained_multi_lake_params(base_constrained_lake_params):
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
+        self.references = constrained_lake_reference_scenarios
+        self.many_obj = many_obj
+
+
+class constrained_moro_lake_params(base_constrained_lake_params):
+    def __init__(self, name, nfe, algo, root_folder, many_obj, robust, seed=None):
+        super().__init__(name, nfe, algo, root_folder, many_obj, robust, seed)
+        self.many_obj = many_obj
+
+
+def constrained_moea_multi(model, params, start_time, problem):
+    """Constrained multi/MORDM: identical to moea_multi."""
+    base = default_lake_scenario
+    if not params.robust:
+        refs = [base]
+    else:
+        refs = params.references + [base]
+
+    file_end = output_file_end(model, params)
+    for idx, ref in enumerate(refs):
+        print('Reference scenario', idx)
+        multi.run_moea(model, params=params,
+                       file_end=file_end,
+                       reference=Scenario('reference', **ref),
+                       ref_num=idx,
+                       start_time=start_time)
+
+
+def constrained_moea_moro(model, params, start_time, problem):
+    """Constrained MORO: identical to moea_moro."""
+    file_end = output_file_end(model, params)
     moro.run_moea(model, params=params,
                   file_end=file_end,
                   start_time=start_time,

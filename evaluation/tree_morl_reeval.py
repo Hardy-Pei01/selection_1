@@ -1,6 +1,51 @@
+"""Re-evaluate robust MORL (PQL) tree policies (multi and moro) on a held-out
+evaluation scenario set.
+
+A PQL Q-table does not encode a single policy — it encodes a family of
+policies, one per vector in `agent.archive` (the start-state Pareto coverage
+set). Each archive vector is a "target"; following it through the Q-table via
+target-vector tracking induces one deterministic policy.
+
+Target-vector tracking (per evaluation scenario):
+  1. target := archive_vector; state := start state.
+  2. At each step, for every visited action a, the stored set
+     non_dominated[s][a] holds raw future-return vectors Q. The realised
+     estimate is Qsa = gamma * Q + avg_reward[s][a]. Pick the (action, row)
+     whose Qsa is closest (L1) to the current target.
+  3. Take that action in the env (the eval scenario's slip pattern may flip
+     it), collect the real reward, advance.
+  4. target := Q[row]  — the raw future-return vector of the matched row is,
+     by construction, the remaining-return target for the next state. (This
+     is the canonical PQL recipe; it works regardless of gamma or whether
+     intermediate rewards are zero — both of which break a
+     `(target - reward) / gamma` update, e.g. the fruit tree has zero
+     internal-node rewards and gamma=1.)
+  5. Sum the real rewards over the episode = this policy's return on this
+     scenario.
+
+Multi: each cell trained one agent per reference scenario (ref_num 0..N).
+       Every (agent_ref, archive_vector) pair is a distinct policy. Evaluate
+       all of them, merge, drop dominated, write one `*_evaluated.csv` per
+       seed folder.
+MORO:  each cell trained one agent. Evaluate every archive vector, drop
+       dominated, write one `*_evaluated.csv` per seed folder.
+
+Output objective columns o1_mean..on_mean are in MIN-form (negated rewards),
+matching the sign convention of the MOEA archives so both paradigms can be
+compared and plotted with the same code.
+
+gamma is read from each agent's saved config — PQL.load_q_table restores it
+(training used gamma_tree=1.0).
+
+Usage:
+    python evaluate_tree_morl_robust.py
+"""
 import os
 import re
+import gzip
 import pickle
+import time
+
 import numpy as np
 import pandas as pd
 
@@ -13,23 +58,91 @@ except ImportError:
     _moocore_is_nd = None
 
 
-# ── Folder/file pattern parsing ───────────────────────────────────────────────
-FOLDER_RE = re.compile(
-    r'^(pareto|indicator|decomposition)_(multi|moro)_(\d+)$'
-)
+# ── Configuration ─────────────────────────────────────────────────────────────
+MORL_BASE = '../tree_data/tree_robust/morl'
+EVAL_PATTERNS_PATH = '../trees/slip_patterns_depth9_eval.npy'
+CSV_PATH_DIM = {
+    2: '../trees/depth9_dim2.csv',
+    6: '../trees/depth9_dim6.csv',
+}
+TREE_DEPTH = 9
 
-# Agent files: agent_{stem}[_ref].pkl
-AGENT_RE = re.compile(
-    r'^agent_(.+?)_(\d+)(?:_(\d+))?\.pkl$'
-)
+# Cell folder -> (scoring, method, n_obj). Only multi/moro are robust.
+FOLDER_RE = re.compile(r'^(pareto|indicator|decomposition)_(multi|moro)_(\d+)$')
+# Agent files: agent_{stem}_{nfe}[_{ref_num}].pkl
+AGENT_RE = re.compile(r'^agent_(.+?)_(\d+)(?:_(\d+))?\.pkl$')
 
 
-def _build_q_cache(agent, decomp):
-    """For each (state, action) with counts > 0, build:
-        Q_cells[state][action] = (Q_array, Qsa_array)
-    where Q_array is the stored nd_set as an (k, n_obj) numpy array, and
-    Qsa_array = gamma * Q + im_rew is the reconstructed Q(s,a). Caching
-    these per-agent avoids per-step set->array conversion during rollouts.
+# ── Pareto filter (minimization form) ─────────────────────────────────────────
+def _filter_non_dominated_min(values):
+    """Boolean mask of non-dominated rows. Inputs are minimization objectives
+    (smaller is better — matches the negative-reward convention used by the
+    MOEA archives).
+    """
+    arr = np.asarray(values, dtype=float)
+    if arr.shape[0] <= 1:
+        return np.ones(arr.shape[0], dtype=bool)
+    if _moocore_is_nd is not None:
+        return _moocore_is_nd(arr)
+    # Fallback O(n^2) — fine for archive-sized inputs.
+    n = arr.shape[0]
+    keep = np.ones(n, dtype=bool)
+    for i in range(n):
+        if not keep[i]:
+            continue
+        for j in range(n):
+            if i == j or not keep[j]:
+                continue
+            if np.all(arr[j] <= arr[i]) and np.any(arr[j] < arr[i]):
+                keep[i] = False
+                break
+    return keep
+
+
+# ── Agent loading ─────────────────────────────────────────────────────────────
+def load_agent(agent_path, n_obj, csv_path):
+    """Construct a PQL agent and restore its Q-table from disk.
+
+    Learning-time parameters (gamma, ref_point, ...) are restored by
+    PQL.load_q_table from the saved config — no manual override needed.
+    PQL.load_q_table also handles both gzip and plain-pickle payloads.
+
+    n_scenarios is the one parameter the constructor needs upfront for a
+    robust agent (it sizes the per-scenario structures), so we peek at the
+    saved config first — but only to size the constructor; the actual data
+    is restored by load_q_table.
+    """
+    with open(agent_path, 'rb') as f:
+        magic = f.read(2)
+    opener = gzip.open if magic == b'\x1f\x8b' else open
+    with opener(agent_path, 'rb') as f:
+        payload = pickle.load(f)
+    cfg = payload['config']
+    saved_robust = bool(cfg.get('robust', False))
+    n_scenarios = payload.get('n_scenarios') if saved_robust else None
+
+    env = FruitTreeEnv(
+        depth=TREE_DEPTH, reward_dim=n_obj, csv_path=csv_path,
+        observe=True, scenario_index=None, slip_patterns_path=None,
+    )
+    agent_kwargs = dict(env=env, ref_point=np.asarray(cfg['ref_point']))
+    if saved_robust and n_scenarios is not None:
+        agent_kwargs['robust'] = True
+        agent_kwargs['n_scenarios'] = n_scenarios
+    agent = PQL(**agent_kwargs)
+    agent.load_q_table(agent_path)
+    return agent
+
+
+# ── Q-cache: per-(state, action) arrays for fast rollout ──────────────────────
+def build_q_cache(agent, decomp):
+    """For each visited (state, action), precompute:
+        cache[state][action] = (Q, Qsa)
+    where Q is the raw nd-set as an (k, n_obj) array and
+    Qsa = gamma * Q + avg_reward[s][a] is the realised-return estimate.
+
+    Done once per agent; reused across every (target, scenario) rollout —
+    avoids re-converting python sets to arrays at every step.
     """
     cache = {}
     gamma = agent.gamma
@@ -52,14 +165,18 @@ def _build_q_cache(agent, decomp):
 
 
 def pick_action_cached(cache, state_flat, target, num_actions):
-    """Cached version of pick_action_for_target."""
+    """Pick the (action, next_target) for the current target via L1 matching.
+
+    For each visited action, find the stored Qsa row closest (L1) to the
+    target; the action owning the global closest row is selected, and the
+    raw Q row of that match becomes the next target. Unvisited state ->
+    fall back to action 0, target unchanged, found=False.
+    """
     per_action = cache.get(state_flat)
     if per_action is None:
         return 0, target, False
 
-    best_action = None
-    best_dist = np.inf
-    next_target = target
+    best_action, best_dist, next_target = None, np.inf, target
     for a, (Q, Qsa) in per_action.items():
         dists = np.abs(Qsa - target).sum(axis=1)
         i = int(np.argmin(dists))
@@ -67,278 +184,224 @@ def pick_action_cached(cache, state_flat, target, num_actions):
             best_dist = float(dists[i])
             best_action = a
             next_target = Q[i]
-
     if best_action is None:
         return 0, target, False
     return best_action, next_target, True
 
 
-# ── Q-table-driven action selection (legacy path, unused after caching) ───────
-def pick_action_for_target(agent, state_flat, target, decomp):
-    """Non-cached fallback — see pick_action_cached for the fast path."""
-    best_action = None
-    best_dist = np.inf
-    next_target = target
-    gamma = agent.gamma
-
-    for a in range(agent.num_actions):
-        if agent.counts[state_flat][a] == 0:
-            continue
-        im_rew = agent.avg_reward[state_flat][a]
-        nd_set = (agent.nd_decomp[state_flat][a] if decomp
-                  else agent.non_dominated[state_flat][a])
-        if not nd_set:
-            continue
-        Q = np.array(list(nd_set), dtype=float)
-        Qsa = gamma * Q + im_rew
-        dists = np.abs(Qsa - target).sum(axis=1)
-        i = int(np.argmin(dists))
-        if dists[i] < best_dist:
-            best_dist = float(dists[i])
-            best_action = a
-            next_target = Q[i]
-
-    found = (best_action is not None)
-    if not found:
-        best_action = 0
-    return best_action, next_target, found
-
-
+# ── Rollout ───────────────────────────────────────────────────────────────────
 def rollout_qtable_cached(cache, env, target_vec, depth, env_shape,
                           n_obj, num_actions):
-    """Run Q-table-driven rollout using a precomputed Q cache."""
+    """Target-track one policy through one eval scenario (slip pattern already
+    set on env). Returns the per-objective summed reward (MAX-form).
+    """
     obs, _ = env.reset()
     target = np.array(target_vec, dtype=float)
     total = np.zeros(n_obj)
-
     for _ in range(depth):
         state_flat = int(np.ravel_multi_index(obs, env_shape))
-        best_action, next_target, _ = pick_action_cached(
-            cache, state_flat, target, num_actions
-        )
-        obs, reward, terminal, _, _ = env.step(best_action)
+        action, next_target, _found = pick_action_cached(
+            cache, state_flat, target, num_actions)
+        obs, reward, terminal, _, _ = env.step(action)
         total += reward
         target = next_target
         if terminal:
             break
-
     return total
 
 
-def rollout_qtable(agent, env, target_vec, depth, decomp):
-    """Non-cached rollout — kept for reference. evaluate_cell uses
-    rollout_qtable_cached for speed.
+def action_sequence(cache, env, target_vec, depth, env_shape, num_actions):
+    """Return the tuple of actions a policy takes under NO slip — used by the
+    diagnostic to count how many distinct executable policies the archive
+    actually yields.
     """
     obs, _ = env.reset()
+    env._slip_pattern = np.zeros(2 ** depth - 1, dtype=bool)
     target = np.array(target_vec, dtype=float)
-    total = np.zeros(agent.num_objectives)
-
+    actions = []
     for _ in range(depth):
-        state_flat = int(np.ravel_multi_index(obs, agent.env_shape))
-        best_action, next_target, _ = pick_action_for_target(
-            agent, state_flat, target, decomp
-        )
-        obs, reward, terminal, _, _ = env.step(best_action)
-        total += reward
+        state_flat = int(np.ravel_multi_index(obs, env_shape))
+        action, next_target, _ = pick_action_cached(
+            cache, state_flat, target, num_actions)
+        actions.append(action)
+        obs, _, terminal, _, _ = env.step(action)
         target = next_target
         if terminal:
             break
+    return tuple(actions)
 
-    return total
 
+# ── Per-agent evaluation ──────────────────────────────────────────────────────
+def evaluate_agent(agent, eval_patterns, n_obj, depth):
+    """Evaluate every archive vector of one agent across all eval scenarios.
 
-# ── Pareto filter (minimization form) ─────────────────────────────────────────
-def _filter_non_dominated_min(values):
-    """Boolean mask of non-dominated rows. Inputs are minimization
-    objectives (smaller is better — matches the negative-reward convention
-    used by MOEA archives).
+    Returns (targets, means_pos, diag):
+      targets   : (n_pol, n_obj) the archive target vectors
+      means_pos : (n_pol, n_obj) mean realised reward, MAX-form
+      diag      : dict with 'n_unique_seq', 'n_archive', 'mean_corr'
     """
-    arr = np.asarray(values, dtype=float)
-    if arr.shape[0] <= 1:
-        return np.ones(arr.shape[0], dtype=bool)
+    decomp = (agent.action_eval == 'decomposition')
+    cache = build_q_cache(agent, decomp)
+    env = agent.env
+    env_shape = agent.env_shape
+    n_actions = agent.num_actions
 
-    if _moocore_is_nd is not None:
-        return _moocore_is_nd(arr)
+    archive = [np.asarray(v, dtype=float) for v in agent.archive]
+    if not archive:
+        return (np.empty((0, n_obj)), np.empty((0, n_obj)),
+                {'n_unique_seq': 0, 'n_archive': 0, 'mean_corr': float('nan')})
 
-    n = arr.shape[0]
-    keep = np.ones(n, dtype=bool)
-    for i in range(n):
-        if not keep[i]:
+    targets = np.zeros((len(archive), n_obj))
+    means_pos = np.zeros((len(archive), n_obj))
+    seqs = set()
+    for p, target_vec in enumerate(archive):
+        # diagnostic: action sequence under no slip
+        seqs.add(action_sequence(cache, env, target_vec, depth,
+                                 env_shape, n_actions))
+        # evaluation: mean realised return across held-out scenarios
+        scenario_returns = np.zeros((len(eval_patterns), n_obj))
+        for s, pat in enumerate(eval_patterns):
+            env._slip_pattern = pat
+            scenario_returns[s] = rollout_qtable_cached(
+                cache, env, target_vec, depth, env_shape, n_obj, n_actions)
+        targets[p] = target_vec
+        means_pos[p] = scenario_returns.mean(axis=0)
+
+    # diagnostic: target-vs-realised correlation, averaged over objectives
+    corrs = []
+    for j in range(n_obj):
+        if np.std(targets[:, j]) > 1e-9 and np.std(means_pos[:, j]) > 1e-9:
+            corrs.append(np.corrcoef(targets[:, j], means_pos[:, j])[0, 1])
+    mean_corr = float(np.nanmean(corrs)) if corrs else float('nan')
+
+    diag = {'n_unique_seq': len(seqs), 'n_archive': len(archive),
+            'mean_corr': mean_corr}
+    return targets, means_pos, diag
+
+
+# ── Per-seed processing ───────────────────────────────────────────────────────
+def process_seed_folder(seed_dir, scoring, method, n_obj, eval_patterns):
+    """Load agent(s) in one seed folder, evaluate, merge, filter, write."""
+    agent_files = []
+    stem, nfe = None, None
+    for fname in sorted(os.listdir(seed_dir)):
+        am = AGENT_RE.match(fname)
+        if not am:
             continue
-        for j in range(n):
-            if i == j or not keep[j]:
-                continue
-            if np.all(arr[j] <= arr[i]) and np.any(arr[j] < arr[i]):
-                keep[i] = False
-                break
-    return keep
+        stem, nfe, ref_num = am.groups()
+        ref_num = int(ref_num) if ref_num is not None else None
+        agent_files.append((os.path.join(seed_dir, fname), ref_num))
+    if not agent_files:
+        return None
 
+    csv_path = CSV_PATH_DIM[n_obj]
 
-# ── Agent loading ─────────────────────────────────────────────────────────────
-def load_agent(agent_path, n_obj, csv_path):
-    """Construct a PQL agent and load the saved Q-table.
-    Learning-time parameters (gamma, ref_point, etc.) are restored from
-    the saved config by load_q_table itself — no manual override needed.
-    """
-    # Inspect the saved config to know n_scenarios (for robust agents),
-    # which is the one parameter the constructor needs upfront because it
-    # sizes the per-scenario data structures.
-    with open(agent_path, 'rb') as f:
-        payload = pickle.load(f)
-    cfg = payload['config']
-    saved_robust = bool(cfg.get('robust', False))
-    n_scenarios = payload.get('n_scenarios', None) if saved_robust else None
-
-    env = FruitTreeEnv(
-        depth=9, reward_dim=n_obj, csv_path=csv_path,
-        observe=True, scenario_index=None, slip_patterns_path=None,
-    )
-    agent_kwargs = dict(env=env, ref_point=np.array(cfg['ref_point']))
-    if saved_robust and n_scenarios is not None:
-        agent_kwargs['robust'] = True
-        agent_kwargs['n_scenarios'] = n_scenarios
-    agent = PQL(**agent_kwargs)
-    agent.load_q_table(agent_path)
-    return agent
-
-
-# ── Per-cell evaluation ───────────────────────────────────────────────────────
-def evaluate_cell(folder_path, scoring, method, n_obj, csv_path,
-                  eval_patterns, agent_files):
-    """Evaluate every policy in every agent file under all eval scenarios.
-    Returns (out_df, n_target_vecs_total, n_dominated_dropped, n_unreachable_dropped).
-
-    agent_files: list of (file_path, ref_num) tuples. moro: 1; multi: 5.
-    """
-    all_records = []  # one per (agent_ref, target_vec)
-    n_unreachable = 0  # policies whose target_vec couldn't be tracked at any step
-
+    all_targets, all_means, all_ref = [], [], []
     for fpath, ref_num in agent_files:
         agent = load_agent(fpath, n_obj=n_obj, csv_path=csv_path)
-        decomp = (agent.action_eval == 'decomposition')
+        if int(agent.num_objectives) != n_obj:
+            raise ValueError(
+                f'{os.path.basename(fpath)}: num_objectives '
+                f'{agent.num_objectives} != folder n_obj {n_obj}')
+        targets, means_pos, diag = evaluate_agent(
+            agent, eval_patterns, n_obj, TREE_DEPTH)
 
-        # Pre-build the Q cache for this agent — converts every (s, a)
-        # nd_set from a python set to a (k, n_obj) numpy array, plus the
-        # reconstructed Q(s, a) = gamma * q + im_rew. Done once per agent;
-        # reused for every (target_vec, scenario) rollout.
-        cache = _build_q_cache(agent, decomp)
+        # DIAGNOSTIC line — visible per agent in the run log.
+        ref_tag = f' ref{ref_num}' if ref_num is not None else ''
+        corr_str = ('nan' if np.isnan(diag['mean_corr'])
+                    else f"{diag['mean_corr']:.2f}")
+        print(f"      [diag]{ref_tag}: "
+              f"{diag['n_unique_seq']}/{diag['n_archive']} unique policies, "
+              f"target-realised corr={corr_str}")
 
-        env = agent.env
-        env_shape = agent.env_shape
-        n_actions = agent.num_actions
+        all_targets.append(targets)
+        all_means.append(means_pos)
+        ref_id = ref_num if ref_num is not None else 0
+        all_ref.append(np.full(len(targets), ref_id, dtype=int))
 
-        archive = list(agent.archive)
-        if not archive:
-            continue
+    targets = np.vstack(all_targets)
+    means_pos = np.vstack(all_means)
+    agent_ref = np.concatenate(all_ref)
 
-        for target_vec in archive:
-            scenario_returns = np.zeros((len(eval_patterns), n_obj))
-            for s, pat in enumerate(eval_patterns):
-                env._slip_pattern = pat
-                scenario_returns[s] = rollout_qtable_cached(
-                    cache, env, target_vec, depth=9,
-                    env_shape=env_shape, n_obj=n_obj, num_actions=n_actions,
-                )
-            mean_pos = scenario_returns.mean(axis=0)  # positive (maximization)
+    # Convert to MIN-form to match the MOEA sign convention.
+    means_min = -means_pos
 
-            all_records.append({
-                'agent_ref': ref_num if ref_num is not None else -1,
-                'target_vec': tuple(float(t) for t in target_vec),
-                'mean_pos': mean_pos,
-            })
+    # Drop dominated policies (across the merged set for multi).
+    keep = _filter_non_dominated_min(means_min)
+    n_total = len(means_min)
+    n_dom = int((~keep).sum())
 
-    if not all_records:
-        return pd.DataFrame(), 0, 0, 0
+    targets_k = targets[keep]
+    means_k = means_min[keep]
+    ref_k = agent_ref[keep]
 
-    n_total = len(all_records)
+    # Assemble output.
+    out = pd.DataFrame()
+    out['policy_id'] = np.arange(int(keep.sum()))
+    if method == 'multi':
+        out['agent_ref'] = ref_k
+    for j in range(n_obj):
+        out[f'target_o{j + 1}'] = targets_k[:, j]
+    for j in range(n_obj):
+        out[f'o{j + 1}_mean'] = means_k[:, j]
 
-    # Convert means to minimization form (negate) for Pareto filter
-    means_min = np.array([-r['mean_pos'] for r in all_records])
-    nd_mask = _filter_non_dominated_min(means_min)
-    n_dom = int((~nd_mask).sum())
-
-    # Build output DataFrame
-    rows = []
-    for keep, rec in zip(nd_mask, all_records):
-        if not keep:
-            continue
-        row = {}
-        if method == 'multi':
-            row['agent_ref'] = rec['agent_ref']
-        for j in range(n_obj):
-            row[f'target_o{j + 1}'] = rec['target_vec'][j]
-        for j in range(n_obj):
-            row[f'o{j + 1}_mean'] = -rec['mean_pos'][j]  # negated
-        rows.append(row)
-
-    out = pd.DataFrame(rows)
-    out.insert(0, 'policy_id', np.arange(len(out)))
-    return out, n_total, n_dom, n_unreachable
+    out_name = f'archives_{stem}_{nfe}_evaluated.csv'
+    out.to_csv(os.path.join(seed_dir, out_name), index=False)
+    return out_name, len(agent_files), n_total, n_dom, len(out)
 
 
 # ── Walker ────────────────────────────────────────────────────────────────────
 def walk_and_evaluate(base, csv_path_dim, eval_patterns_path):
-    eval_patterns = np.load(eval_patterns_path)
-    print(f'Loaded {len(eval_patterns)} evaluation scenarios from {eval_patterns_path}')
+    if not os.path.isdir(base):
+        raise SystemExit(f'MORL base not found: {base}')
+    if not os.path.exists(eval_patterns_path):
+        raise SystemExit(f'eval patterns not found: {eval_patterns_path}')
 
-    n_cells = 0
+    eval_patterns = np.load(eval_patterns_path)
+    print(f'Loaded {len(eval_patterns)} evaluation scenarios '
+          f'({eval_patterns.shape[1]} nodes each)\n')
+
+    cells = []
     for d in sorted(os.listdir(base)):
         m = FOLDER_RE.match(d)
         if not m:
             continue
         scoring, method, n_obj = m.groups()
-        n_obj = int(n_obj)
-        folder_path = os.path.join(base, d)
-        csv_path = csv_path_dim[n_obj]
+        cells.append((d, scoring, method, int(n_obj)))
+    if not cells:
+        raise SystemExit(f'No multi/moro cells found under {base}')
+    print(f'Found {len(cells)} robust MORL cell(s)\n')
 
-        agent_files = []
-        agent_stem = None
-        agent_nfe = None
-        for fname in sorted(os.listdir(folder_path)):
-            am = AGENT_RE.match(fname)
-            if not am:
-                continue
-            stem, nfe, ref_num = am.groups()
-            ref_num = int(ref_num) if ref_num is not None else None
-            agent_files.append((os.path.join(folder_path, fname), ref_num))
-            agent_stem = stem
-            agent_nfe = nfe
-
-        if not agent_files:
-            continue
-
-        evaluated, n_total, n_dom, _ = evaluate_cell(
-            folder_path=folder_path,
-            scoring=scoring, method=method,
-            n_obj=n_obj, csv_path=csv_path,
-            eval_patterns=eval_patterns,
-            agent_files=agent_files,
+    t0 = time.time()
+    n_seeds_done = 0
+    for cell_dir, scoring, method, n_obj in cells:
+        print(f'{cell_dir}  [{scoring}, {method}, {n_obj}-obj]')
+        cell_path = os.path.join(base, cell_dir)
+        seed_folders = sorted(
+            sd for sd in os.listdir(cell_path)
+            if os.path.isdir(os.path.join(cell_path, sd))
         )
+        for sd in seed_folders:
+            seed_dir = os.path.join(cell_path, sd)
+            result = process_seed_folder(
+                seed_dir, scoring, method, n_obj, eval_patterns)
+            if result is None:
+                print(f'    {sd}: no agent files — skipped')
+                continue
+            out_name, n_agents, n_total, n_dom, n_kept = result
+            print(f'    {sd}: {n_agents} agent(s), {n_total} policies '
+                  f'→ {n_kept} non-dominated ({n_dom} dom) → {out_name}')
+            n_seeds_done += 1
+        print()
 
-        out_name = f'archives_{agent_stem}_{agent_nfe}_evaluated.csv'
-        out_path = os.path.join(folder_path, out_name)
-        evaluated.to_csv(out_path, index=False)
-
-        print(f'  {d}: {len(agent_files)} agent(s), '
-              f'{n_total} policies, '
-              f'{n_total} → {len(evaluated)} after ND filter '
-              f'({n_dom} dom) → {out_name}')
-        n_cells += 1
-
-    print(f'\nDone. {n_cells} cells written.')
+    print(f'Done. {n_seeds_done} seed folder(s) written in '
+          f'{time.strftime("%H:%M:%S", time.gmtime(time.time() - t0))}')
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    BASE = '../tree_data/morl_robust'
-    EVAL_PATTERNS_PATH = '../trees/slip_patterns_depth9_eval.npy'
-    CSV_PATH_DIM = {
-        2: '../trees/depth9_dim2.csv',
-        6: '../trees/depth9_dim6.csv',
-    }
-
     walk_and_evaluate(
-        base=BASE,
+        base=MORL_BASE,
         csv_path_dim=CSV_PATH_DIM,
         eval_patterns_path=EVAL_PATTERNS_PATH,
     )

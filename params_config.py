@@ -145,19 +145,101 @@ lake_reference_scenarios = [
      'inflow_seed1': 4783, 'inflow_seed2': 3259,
      'Pcrit1': _pcrit(0.281, 3.368),
      'Pcrit2': _pcrit(0.109, 2.759)},
-    {'b1': 0.176, 'q1': 2.075,
-     'b2': 0.101, 'q2': 2.227,
-     'inflow_seed1': 6643, 'inflow_seed2': 4099,
-     'Pcrit1': _pcrit(0.176, 2.075),
-     'Pcrit2': _pcrit(0.101, 2.227)},
-    {'b1': 0.252, 'q1': 3.014,
-     'b2': 0.277, 'q2': 3.896,
-     'inflow_seed1': 2858, 'inflow_seed2': 2076,
-     'Pcrit1': _pcrit(0.252, 3.014),
-     'Pcrit2': _pcrit(0.277, 3.896)},
     {'b1': 0.101, 'q1': 2.057,
      'b2': 0.229, 'q2': 3.198,
      'inflow_seed1': 9593, 'inflow_seed2': 6799,
      'Pcrit1': _pcrit(0.101, 2.057),
      'Pcrit2': _pcrit(0.229, 3.198)},
+    {'b1': 0.180, 'q1': 3.253,
+     'b2': 0.106, 'q2': 2.027,
+     'inflow_seed1': 7326, 'inflow_seed2': 7581,
+     'Pcrit1': _pcrit(0.180, 3.253),
+     'Pcrit2': _pcrit(0.106, 2.027)},
+    {'b1': 0.221, 'q1': 4.178,
+     'b2': 0.395, 'q2': 2.106,
+     'inflow_seed1': 895, 'inflow_seed2': 5197,
+     'Pcrit1': _pcrit(0.221, 4.178),
+     'Pcrit2': _pcrit(0.395, 2.106)},
+]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Constrained two-lake problem — parallel infrastructure
+# ────────────────────────────────────────────────────────────────────────────
+
+constrained_multi_objs_lake_params = {
+    'uncertainties': [
+        RealParameter('b1', 0.10, 0.45),
+        RealParameter('q1', 2.0, 4.5),
+        RealParameter('b2', 0.10, 0.45),
+        RealParameter('q2', 2.0, 4.5),
+        IntegerParameter('inflow_seed1', 0, 10000),
+        IntegerParameter('inflow_seed2', 0, 10000),
+    ],
+
+    'outcomes': [
+        ScalarOutcome(f'o{i + 1}', kind=ScalarOutcome.MINIMIZE)
+        for i in range(lake_multi_obj)
+    ] + [
+        ScalarOutcome('n_violations_1', kind=ScalarOutcome.INFO),
+    ],
+
+    'constants': [
+        Constant("num_obj", lake_multi_obj),
+        Constant("alpha", 0.4),
+        Constant("delta", 0.98),
+        Constant("total_years", total_years),
+        Constant("years_per_action", years_per_action),
+    ]
+}
+
+# 6-obj MOEA model params. Adds n_violations_2 (lake 2 violation count)
+# as a second constraint outcome.
+constrained_many_objs_lake_params = {
+    'uncertainties': [
+        RealParameter('b1', 0.10, 0.45),
+        RealParameter('q1', 2.0, 4.5),
+        RealParameter('b2', 0.10, 0.45),
+        RealParameter('q2', 2.0, 4.5),
+        IntegerParameter('inflow_seed1', 0, 10000),
+        IntegerParameter('inflow_seed2', 0, 10000),
+    ],
+
+    'outcomes': [
+        ScalarOutcome(f'o{i + 1}', kind=ScalarOutcome.MINIMIZE)
+        for i in range(lake_many_obj)
+    ] + [
+        ScalarOutcome('n_violations_1', kind=ScalarOutcome.INFO),
+        ScalarOutcome('n_violations_2', kind=ScalarOutcome.INFO),
+    ],
+
+    'constants': [
+        Constant("num_obj", lake_many_obj),
+        Constant("alpha", 0.4),
+        Constant("delta", 0.98),
+        Constant("total_years", total_years),
+        Constant("years_per_action", years_per_action),
+    ]
+}
+
+constrained_lake_reference_scenarios = [
+    {'b1': 0.268, 'q1': 2.175,
+     'b2': 0.415, 'q2': 2.073,
+     'inflow_seed1': 9622, 'inflow_seed2': 1693,
+     'Pcrit1': _pcrit(0.268, 2.175),
+     'Pcrit2': _pcrit(0.415, 2.073)},
+    {'b1': 0.222, 'q1': 4.234,
+     'b2': 0.101, 'q2': 4.285,
+     'inflow_seed1': 451, 'inflow_seed2': 4569,
+     'Pcrit1': _pcrit(0.222, 4.234),
+     'Pcrit2': _pcrit(0.101, 4.285)},
+    {'b1': 0.223, 'q1': 2.245,
+     'b2': 0.132, 'q2': 3.018,
+     'inflow_seed1': 674, 'inflow_seed2': 1256,
+     'Pcrit1': _pcrit(0.223, 2.245),
+     'Pcrit2': _pcrit(0.132, 3.018)},
+    {'b1': 0.434, 'q1': 2.234,
+     'b2': 0.336, 'q2': 2.461,
+     'inflow_seed1': 5994, 'inflow_seed2': 2608,
+     'Pcrit1': _pcrit(0.434, 2.234),
+     'Pcrit2': _pcrit(0.336, 2.461)},
 ]
